@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>简历生成器 Pro</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{--primary:#2563eb;--primary-dark:#1d4ed8;--bg:#f1f5f9;--card:#fff;--text:#1e293b;--text-light:#64748b;--border:#e2e8f0;--accent:#0ea5e9}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text)}
+.app{display:flex;min-height:100vh}
+.sidebar{width:440px;min-width:440px;background:var(--card);border-right:1px solid var(--border);height:100vh;position:sticky;top:0;display:flex;flex-direction:column}
+.sidebar-header{padding:20px 24px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,var(--primary),var(--accent));color:#fff}
+.sidebar-header h1{font-size:22px;font-weight:700}
+.sidebar-header p{font-size:13px;opacity:.85;margin-top:4px}
+.sidebar-body{flex:1;overflow-y:auto;padding:20px 24px}
+.sidebar-footer{padding:12px 24px;border-top:1px solid var(--border);font-size:12px;color:var(--text-light);text-align:center}
+.preview-area{flex:1;display:flex;flex-direction:column;align-items:center;padding:32px;overflow-y:auto}
+.toolbar{display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;justify-content:center;align-items:center}
+.toolbar button{padding:10px 20px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
+.btn-pdf{background:var(--primary);color:#fff}
+.btn-pdf:hover{background:var(--primary-dark);transform:translateY(-1px);box-shadow:0 4px 12px rgba(37,99,235,.3)}
+.btn-jpg{background:#059669;color:#fff}
+.btn-jpg:hover{background:#047857;transform:translateY(-1px);box-shadow:0 4px 12px rgba(5,150,105,.3)}
+.btn-print{background:#6366f1;color:#fff}
+.btn-print:hover{background:#4f46e5}
+.btn-reset{background:#f1f5f9;color:#475569;border:1px solid var(--border)!important}
+.btn-reset:hover{background:#e2e8f0}
+.btn-sample{background:#f59e0b;color:#fff}
+.btn-sample:hover{background:#d97706}
+.btn-save{background:#8b5cf6;color:#fff}
+.btn-save:hover{background:#7c3aed}
+.theme-panel{background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px}
+.theme-panel-title{font-size:13px;font-weight:700;color:var(--text-light);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px}
+.preset-themes{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.preset-btn{width:36px;height:36px;border-radius:8px;border:3px solid transparent;cursor:pointer;transition:all .2s;position:relative}
+.preset-btn:hover{transform:scale(1.1)}
+.preset-btn.active{border-color:var(--text);box-shadow:0 0 0 2px #fff,0 0 0 4px var(--text)}
+.preset-btn::after{content:attr(data-label);position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--text-light);white-space:nowrap;opacity:0;transition:opacity .2s}
+.preset-btn:hover::after{opacity:1}
+.custom-colors{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.color-field label{font-size:11px;font-weight:600;color:var(--text-light);display:block;margin-bottom:4px}
+.color-field input[type="color"]{width:100%;height:32px;border:1px solid var(--border);border-radius:6px;padding:2px;cursor:pointer;background:#fff}
+.options-row{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+.opt-group{flex:1;min-width:120px}
+.opt-group label{font-size:11px;font-weight:600;color:var(--text-light);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+.opt-group select,.opt-group input[type="range"]{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:#fafbfc;cursor:pointer}
+.opt-group select:focus{outline:none;border-color:var(--primary)}
+.opt-group input[type="range"]{padding:0;height:6px;-webkit-appearance:none;background:#e2e8f0;border-radius:3px;border:none;margin-top:6px}
+.opt-group input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;background:var(--primary);border-radius:50%;cursor:pointer}
+.section-order{margin-bottom:20px}
+.section-order-title{font-size:13px;font-weight:700;color:var(--text-light);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
+.order-list{display:flex;flex-wrap:wrap;gap:6px}
+.order-chip{padding:6px 12px;background:#f1f5f9;border:1px solid var(--border);border-radius:20px;font-size:12px;font-weight:600;cursor:grab;user-select:none;transition:all .15s;display:flex;align-items:center;gap:6px}
+.order-chip:active{cursor:grabbing;background:#dbeafe;border-color:var(--primary)}
+.order-chip.dragging{opacity:.4}
+.order-chip.drag-over{border-color:var(--primary);background:#dbeafe;transform:scale(1.05)}
+.order-move-btn{background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:11px;padding:1px 5px;color:var(--text-light);transition:all .15s;line-height:1}
+.order-move-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary)}
+.photo-upload{display:flex;align-items:center;gap:16px;margin-bottom:16px;padding:14px;background:#f8fafc;border:1px solid var(--border);border-radius:10px}
+.photo-preview{width:64px;height:64px;border-radius:50%;border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;background:#f1f5f9;cursor:pointer;transition:all .2s}
+.photo-preview:hover{border-color:var(--primary);background:#eff6ff}
+.photo-preview img{width:100%;height:100%;object-fit:cover}
+.photo-preview .placeholder{font-size:24px;color:var(--text-light)}
+.photo-info{flex:1}
+.photo-info p{font-size:12px;color:var(--text-light);margin-bottom:6px}
+.photo-info button{padding:6px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s}
+.photo-btn-upload{background:var(--primary);color:#fff;margin-right:6px}
+.photo-btn-upload:hover{background:var(--primary-dark)}
+.photo-btn-remove{background:#fee2e2;color:#dc2626}
+.photo-btn-remove:hover{background:#fecaca}
+.section{margin-bottom:24px}
+.section-title{font-size:15px;font-weight:700;color:var(--primary);margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--primary);display:flex;align-items:center;gap:8px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--text-light);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+.field input,.field textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:inherit;transition:border-color .2s;background:#fafbfc}
+.field input:focus,.field textarea:focus{outline:none;border-color:var(--primary);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.field textarea{resize:vertical;min-height:70px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.item-block{background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px;position:relative}
+.item-block .remove-btn{position:absolute;top:8px;right:8px;background:#fee2e2;color:#dc2626;border:none;border-radius:4px;width:24px;height:24px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
+.item-block .remove-btn:hover{background:#fecaca}
+.add-btn{width:100%;padding:10px;border:2px dashed var(--border);border-radius:8px;background:transparent;color:var(--primary);font-size:14px;font-weight:600;cursor:pointer;transition:all .2s}
+.add-btn:hover{border-color:var(--primary);background:rgba(37,99,235,.04)}
+.resume-paper{width:210mm;background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.12);padding:0;position:relative;overflow:hidden;flex-shrink:0;--hdr-from:#1e3a5f;--hdr-to:#0ea5e9;--accent:#2563eb;--accent-light:#dbeafe;--accent-border:#bfdbfe;--accent-text:#1e40af}
+.resume-header{color:#fff;padding:40px 48px 36px;position:relative;background:linear-gradient(135deg,var(--hdr-from),var(--hdr-to))}
+.resume-header::after{content:'';position:absolute;bottom:-20px;left:0;right:0;height:40px;background:#fff;border-radius:50% 50% 0 0/100% 100% 0 0}
+.resume-header-inner{display:flex;align-items:center;gap:24px}
+.resume-avatar{width:80px;height:80px;border-radius:50%;border:3px solid rgba(255,255,255,.4);object-fit:cover;flex-shrink:0;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:32px;color:#fff;overflow:hidden}
+.resume-avatar img{width:100%;height:100%;object-fit:cover}
+.resume-header-text{flex:1}
+.resume-name{font-size:36px;font-weight:800;letter-spacing:2px;margin-bottom:2px}
+.resume-title{font-size:16px;font-weight:400;opacity:.9;letter-spacing:1px}
+.resume-contact{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;font-size:13px;opacity:.9}
+.resume-contact span{display:flex;align-items:center;gap:5px}
+.resume-body{padding:24px 48px 48px}
+.resume-section{margin-bottom:28px}
+.resume-section-title{font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:2px;padding-bottom:8px;border-bottom:2px solid;margin-bottom:14px;display:flex;align-items:center;gap:8px;color:var(--accent);border-bottom-color:var(--accent)}
+.resume-section-title::before{content:'';width:4px;height:18px;border-radius:2px;background:var(--accent)}
+.resume-summary{font-size:14px;line-height:1.7;color:#475569}
+.resume-item{margin-bottom:16px}
+.resume-item-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px}
+.resume-item-title{font-size:15px;font-weight:700;color:#1e293b}
+.resume-item-date{font-size:12px;color:#94a3b8;font-weight:600;white-space:nowrap}
+.resume-item-sub{font-size:13px;font-weight:600;margin-bottom:4px;color:var(--accent)}
+.resume-item-desc{font-size:13px;line-height:1.6;color:#374151}
+.resume-item-desc ul{padding-left:18px}
+.resume-item-desc li{margin-bottom:2px}
+.resume-skills{display:flex;flex-wrap:wrap;gap:8px}
+.resume-skill-tag{padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid;background:var(--accent-light);color:var(--accent-text);border-color:var(--accent-border)}
+.resume-paper.layout-sidebar .resume-body{display:grid;grid-template-columns:200px 1fr;gap:0;padding:0}
+.resume-paper.layout-sidebar .resume-sidebar-col{background:#f8fafc;padding:28px 20px;border-right:1px solid #e2e8f0}
+.resume-paper.layout-sidebar .resume-main-col{padding:28px 32px}
+.resume-paper.layout-sidebar .resume-section-title{font-size:13px;letter-spacing:1.5px}
+.resume-paper.layout-sidebar .resume-skill-tag{font-size:11px;padding:4px 10px}
+.resume-paper.layout-sidebar .resume-item-header{flex-direction:column;gap:2px}
+.resume-paper.layout-sidebar .resume-item-date{font-size:11px}
+.resume-paper.layout-sidebar .resume-item-title{font-size:13px}
+.resume-paper.layout-sidebar .resume-item-sub{font-size:12px}
+.resume-paper.layout-sidebar .resume-item-desc{font-size:12px;line-height:1.5}
+/* 多简历管理面板 */
+.resume-manager{background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px}
+.resume-manager-title{font-size:13px;font-weight:700;color:var(--text-light);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;justify-content:space-between}
+.resume-manager-title button{font-size:11px;padding:4px 10px;border:none;border-radius:6px;background:var(--primary);color:#fff;cursor:pointer;font-weight:600}
+.resume-manager-title button:hover{background:var(--primary-dark)}
+.resume-list{max-height:200px;overflow-y:auto}
+.resume-list-item{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:6px;cursor:pointer;transition:all .15s;margin-bottom:4px;border:1px solid transparent}
+.resume-list-item:hover{background:#eff6ff}
+.resume-list-item.active{background:var(--accent-light);border-color:var(--accent-border)}
+.resume-list-item .ri-name{font-size:13px;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.resume-list-item .ri-date{font-size:11px;color:var(--text-light);margin:0 8px;white-space:nowrap}
+.resume-list-item .ri-actions{display:flex;gap:4px}
+.resume-list-item .ri-actions button{font-size:10px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer;color:var(--text-light);transition:all .15s}
+.resume-list-item .ri-actions button:hover{background:var(--primary);color:#fff;border-color:var(--primary)}
+.resume-list-item .ri-actions button.ri-del:hover{background:#dc2626;border-color:#dc2626}
+.resume-list-empty{font-size:12px;color:var(--text-light);text-align:center;padding:12px}
+.toast{position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:1000;transform:translateY(80px);opacity:0;transition:all .3s ease}
+.toast.show{transform:translateY(0);opacity:1}
+.loading-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:999}
+.loading-overlay.show{display:flex}
+.loading-box{background:#fff;padding:32px 40px;border-radius:12px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.spinner{width:40px;height:40px;border:4px solid #e2e8f0;border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media print{body{background:#fff}.sidebar,.toolbar,.loading-overlay,.toast{display:none!important}.preview-area{padding:0}.resume-paper{box-shadow:none;width:100%}}
+@media(max-width:900px){.app{flex-direction:column}.sidebar{width:100%;min-width:unset;height:auto;position:static}.preview-area{padding:16px}.resume-paper{width:100%}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h1>📄 简历生成器 Pro</h1>
+      <p>填写信息 → 实时预览 → 一键导出</p>
+    </div>
+    <div class="sidebar-body">
+      <!-- 多简历管理面板 -->
+      <div class="resume-manager">
+        <div class="resume-manager-title">📋 简历管理 <button onclick="createNewResume()">+ 新建简历</button></div>
+        <div class="resume-list" id="resumeList"></div>
+      </div>
+      <div class="photo-upload">
+        <div class="photo-preview" id="photoPreview" onclick="$('photoInput').click()"><span class="placeholder">📷</span></div>
+        <div class="photo-info">
+          <p>上传头像（可选）</p>
+          <button class="photo-btn-upload" onclick="$('photoInput').click()">选择图片</button>
+          <button class="photo-btn-remove" onclick="removePhoto()" id="photoRemoveBtn" style="display:none">移除</button>
+          <input type="file" id="photoInput" accept="image/*" style="display:none" onchange="handlePhoto(this)">
+        </div>
+      </div>
+      <div class="theme-panel">
+        <div class="theme-panel-title">🎨 主题配色</div>
+        <div class="preset-themes">
+          <button class="preset-btn active" data-theme='{"from":"#1e3a5f","to":"#0ea5e9","accent":"#2563eb","light":"#dbeafe","border":"#bfdbfe","text":"#1e40af"}' data-label="海洋蓝" onclick="setPreset(this)" style="background:linear-gradient(135deg,#1e3a5f,#0ea5e9)"></button>
+          <button class="preset-btn" data-theme='{"from":"#064e3b","to":"#34d399","accent":"#059669","light":"#d1fae5","border":"#a7f3d0","text":"#065f46"}' data-label="翡翠绿" onclick="setPreset(this)" style="background:linear-gradient(135deg,#064e3b,#34d399)"></button>
+          <button class="preset-btn" data-theme='{"from":"#4c1d95","to":"#a78bfa","accent":"#7c3aed","light":"#ede9fe","border":"#c4b5fd","text":"#5b21b6"}' data-label="星空紫" onclick="setPreset(this)" style="background:linear-gradient(135deg,#4c1d95,#a78bfa)"></button>
+          <button class="preset-btn" data-theme='{"from":"#7c2d12","to":"#fb923c","accent":"#ea580c","light":"#ffedd5","border":"#fed7aa","text":"#9a3412"}' data-label="日落橙" onclick="setPreset(this)" style="background:linear-gradient(135deg,#7c2d12,#fb923c)"></button>
+          <button class="preset-btn" data-theme='{"from":"#881337","to":"#fb7185","accent":"#e11d48","light":"#ffe4e6","border":"#fecdd3","text":"#9f1239"}' data-label="玫瑰红" onclick="setPreset(this)" style="background:linear-gradient(135deg,#881337,#fb7185)"></button>
+          <button class="preset-btn" data-theme='{"from":"#111827","to":"#6b7280","accent":"#374151","light":"#f3f4f6","border":"#d1d5db","text":"#1f2937"}' data-label="商务灰" onclick="setPreset(this)" style="background:linear-gradient(135deg,#111827,#6b7280)"></button>
+          <button class="preset-btn" data-theme='{"from":"#92400e","to":"#fbbf24","accent":"#d97706","light":"#fef3c7","border":"#fde68a","text":"#78350f"}' data-label="琥珀金" onclick="setPreset(this)" style="background:linear-gradient(135deg,#92400e,#fbbf24)"></button>
+          <button class="preset-btn" data-theme='{"from":"#134e4a","to":"#5eead4","accent":"#14b8a6","light":"#ccfbf1","border":"#99f6e4","text":"#115e59"}' data-label="青碧" onclick="setPreset(this)" style="background:linear-gradient(135deg,#134e4a,#5eead4)"></button>
+        </div>
+        <div class="custom-colors">
+          <div class="color-field"><label>渐变起</label><input type="color" id="colorFrom" value="#1e3a5f" oninput="applyCustomColor()"></div>
+          <div class="color-field"><label>渐变止</label><input type="color" id="colorTo" value="#0ea5e9" oninput="applyCustomColor()"></div>
+          <div class="color-field"><label>强调色</label><input type="color" id="colorAccent" value="#2563eb" oninput="applyCustomColor()"></div>
+        </div>
+      </div>
+      <div class="options-row">
+        <div class="opt-group"><label>布局</label><select id="optLayout" onchange="render();scheduleSave()"><option value="classic">经典（上下）</option><option value="sidebar">侧边栏（左右）</option></select></div>
+        <div class="opt-group"><label>字体</label><select id="optFont" onchange="render();scheduleSave()"><option value="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">黑体</option><option value="'Noto Serif SC','SimSun','STSong',serif">宋体</option><option value="'KaiTi','STKaiti',serif">楷体</option><option value="Georgia,'Times New Roman',serif">英文衬线</option><option value="'Segoe UI',Roboto,sans-serif">英文无衬线</option></select></div>
+        <div class="opt-group"><label>字号 <span id="fontSizeVal">14px</span></label><input type="range" id="optFontSize" min="12" max="16" value="14" oninput="$('fontSizeVal').textContent=this.value+'px';render()"></div>
+      </div>
+      <div class="section-order">
+        <div class="section-order-title">📑 模块顺序（拖拽或按钮调整）</div>
+        <div class="order-list" id="sectionOrder"></div>
+      </div>
+      <div class="section">
+        <div class="section-title">👤 基本信息</div>
+        <div class="field"><label>姓名</label><input id="name" placeholder="张三" oninput="debouncedRender()"></div>
+        <div class="field"><label>求职意向</label><input id="jobTitle" placeholder="高级前端工程师" oninput="debouncedRender()"></div>
+        <div class="row"><div class="field"><label>手机</label><input id="phone" placeholder="138-0000-0000" oninput="debouncedRender()"></div><div class="field"><label>邮箱</label><input id="email" placeholder="zhangsan@email.com" oninput="debouncedRender()"></div></div>
+        <div class="row"><div class="field"><label>所在城市</label><input id="city" placeholder="北京" oninput="debouncedRender()"></div><div class="field"><label>出生年月</label><input id="website" placeholder="2001.12" oninput="debouncedRender()"></div></div>
+      </div>
+      <div class="section"><div class="section-title">📝 个人简介</div><div class="field"><textarea id="summary" rows="3" placeholder="8年前端开发经验..." oninput="debouncedRender()"></textarea></div></div>
+      <div class="section"><div class="section-title">💼 工作经历</div><div id="experience-list"></div><button class="add-btn" onclick="addExperience()">+ 添加工作经历</button></div>
+      <div class="section"><div class="section-title">🎓 教育背景</div><div id="education-list"></div><button class="add-btn" onclick="addEducation()">+ 添加教育经历</button></div>
+      <div class="section"><div class="section-title">🛠️ 专业技能</div><div class="field"><input id="skills" placeholder="React, Vue, TypeScript（逗号分隔）" oninput="debouncedRender()"></div></div>
+      <div class="section"><div class="section-title">🚀 项目经验</div><div id="project-list"></div><button class="add-btn" onclick="addProject()">+ 添加项目</button></div>
+      <div class="section"><div class="section-title">✨ 自定义栏目</div><div id="custom-list"></div><button class="add-btn" onclick="addCustomSection()">+ 添加自定义栏目</button></div>
+    </div>
+    <div class="sidebar-footer">数据自动保存在浏览器本地 · 刷新不丢失 · 最多保存10份简历</div>
+  </div>
+  <div class="preview-area">
+    <div class="toolbar">
+      <button class="btn-pdf" onclick="exportPDF()">📥 导出 PDF</button>
+      <button class="btn-jpg" onclick="exportJPG()">🖼️ 导出 JPG</button>
+      <button class="btn-print" onclick="window.print()">🖨️ 打印</button>
+      <button class="btn-save" onclick="saveCurrentResume()">💾 保存</button>
+      <button class="btn-sample" onclick="loadSample()">🔄 示例</button>
+      <button class="btn-reset" onclick="clearAll()">🗑️ 清空</button>
+    </div>
+    <div class="resume-paper" id="resume"></div>
+  </div>
+</div>
+<div class="loading-overlay" id="loading"><div class="loading-box"><div class="spinner"></div><div>正在生成...</div></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===== 多简历管理 ===== */
+const RESUME_INDEX_KEY='resume_pro_resumes';
+const RESUME_PREFIX='resume_pro_resume_';
+const MAX_RESUMES=10;
+let currentResumeId=null;
+
+function getResumeIndex(){
+  try{return JSON.parse(localStorage.getItem(RESUME_INDEX_KEY))||[]}catch(e){return[]}
+}
+function saveResumeIndex(idx){localStorage.setItem(RESUME_INDEX_KEY,JSON.stringify(idx))}
+
+function genId(){return 'r_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)}
+
+function buildResumeData(){
+  return{
+    name:val('name'),jobTitle:val('jobTitle'),phone:val('phone'),email:val('email'),
+    city:val('city'),website:val('website'),summary:val('summary'),skills:val('skills'),
+    exps:state_exps(),edus:state_edus(),projs:state_projs(),customs:state_customs(),
+    theme:currentTheme,sectionOrder:[...sectionOrder],font:val('optFont'),fontSize:val('optFontSize'),
+    layout:val('optLayout'),photo:photoDataUrl
+  };
+}
+
+function applyResumeData(d){
+  skipRender=true;
+  $('name').value=d.name||'';$('jobTitle').value=d.jobTitle||'';
+  $('phone').value=d.phone||'';$('email').value=d.email||'';
+  $('city').value=d.city||'';$('website').value=d.website||'';
+  $('summary').value=d.summary||'';$('skills').value=d.skills||'';
+  if(d.theme)currentTheme=d.theme;
+  if(d.sectionOrder)sectionOrder=[...d.sectionOrder];
+  if(d.font)$('optFont').value=d.font;
+  if(d.fontSize)$('optFontSize').value=d.fontSize;
+  if(d.layout)$('optLayout').value=d.layout;
+  if(d.photo){photoDataUrl=d.photo;$('photoPreview').innerHTML='<img src="'+photoDataUrl+'">';$('photoRemoveBtn').style.display=''}
+  else{photoDataUrl='';$('photoPreview').innerHTML='<span class="placeholder">📷</span>';$('photoRemoveBtn').style.display='none'}
+  $('experience-list').innerHTML='';$('education-list').innerHTML='';$('project-list').innerHTML='';$('custom-list').innerHTML='';
+  state_exp=[];state_edu=[];state_proj=[];state_custom=[];
+  expCount=0;eduCount=0;projCount=0;customCount=0;
+  (d.exps||[]).forEach(e=>addExperience(e));
+  (d.edus||[]).forEach(e=>addEducation(e));
+  (d.projs||[]).forEach(p=>addProject(p));
+  (d.customs||[]).forEach(c=>addCustomSection(c));
+  skipRender=false;
+  applyThemeToInputs();rebuildOrderChips();$('fontSizeVal').textContent=(d.fontSize||14)+'px';
+  render();
+}
+
+function renderResumeList(){
+  const idx=getResumeIndex(),list=$('resumeList');
+  if(idx.length===0){list.innerHTML='<div class="resume-list-empty">暂无保存的简历，点击上方按钮新建</div>';return}
+  list.innerHTML=idx.map(r=>{
+    const active=r.id===currentResumeId?'active':'';
+    const dateStr=r.updatedAt?new Date(r.updatedAt).toLocaleDateString('zh-CN'):'';
+    return'<div class="resume-list-item '+active+'" onclick="switchResume(\''+r.id+'\')">'
+      +'<span class="ri-name">'+esc(r.name||'未命名简历')+'</span>'
+      +'<span class="ri-date">'+dateStr+'</span>'
+      +'<span class="ri-actions">'
+      +'<button onclick="event.stopPropagation();renameResume(\''+r.id+'\')" title="重命名">✏️</button>'
+      +'<button class="ri-del" onclick="event.stopPropagation();deleteResume(\''+r.id+'\')" title="删除">🗑️</button>'
+      +'</span></div>';
+  }).join('');
+}
+
+function createNewResume(){
+  const idx=getResumeIndex();
+  if(idx.length>=MAX_RESUMES){toast('⚠️ 最多保存'+MAX_RESUMES+'份简历');return}
+  const id=genId();
+  const data=buildResumeData();
+  data.name='新简历';
+  localStorage.setItem(RESUME_PREFIX+id,JSON.stringify(data));
+  idx.unshift({id:id,name:'新简历',createdAt:Date.now(),updatedAt:Date.now()});
+  saveResumeIndex(idx);
+  currentResumeId=id;
+  renderResumeList();
+  toast('✅ 新简历已创建');
+}
+
+function switchResume(id){
+  if(currentResumeId===id)return;
+  const raw=localStorage.getItem(RESUME_PREFIX+id);
+  if(!raw)return;
+  currentResumeId=id;
+  applyResumeData(JSON.parse(raw));
+  renderResumeList();
+}
+
+function deleteResume(id){
+  if(!confirm('确定删除这份简历？'))return;
+  let idx=getResumeIndex();
+  idx=idx.filter(r=>r.id!==id);
+  saveResumeIndex(idx);
+  localStorage.removeItem(RESUME_PREFIX+id);
+  if(currentResumeId===id){
+    currentResumeId=idx.length>0?idx[0].id:null;
+    if(currentResumeId){const raw=localStorage.getItem(RESUME_PREFIX+currentResumeId);if(raw)applyResumeData(JSON.parse(raw))}
+    else{clearForm();render()}
+  }
+  renderResumeList();
+  toast('✅ 已删除');
+}
+
+function renameResume(id){
+  const idx=getResumeIndex();
+  const item=idx.find(r=>r.id===id);
+  if(!item)return;
+  const newName=prompt('请输入简历名称：',item.name);
+  if(newName===null||newName.trim()==='')return;
+  item.name=newName.trim().slice(0,20);
+  item.updatedAt=Date.now();
+  saveResumeIndex(idx);
+  if(id===currentResumeId){
+    const raw=localStorage.getItem(RESUME_PREFIX+id);
+    if(raw){const d=JSON.parse(raw);d.name=item.name;localStorage.setItem(RESUME_PREFIX+id,JSON.stringify(d))}
+  }
+  renderResumeList();
+  toast('✅ 已重命名');
+}
+
+function saveCurrentResume(){
+  if(!currentResumeId){createNewResume();return}
+  const data=buildResumeData();
+  const idx=getResumeIndex();
+  const item=idx.find(r=>r.id===currentResumeId);
+  if(item){
+    item.name=data.name||item.name;
+    item.updatedAt=Date.now();
+    saveResumeIndex(idx);
+  }
+  localStorage.setItem(RESUME_PREFIX+currentResumeId,JSON.stringify(data));
+  renderResumeList();
+  toast('✅ 已保存');
+}
+
+function clearForm(){
+  $('name').value='';$('jobTitle').value='';$('phone').value='';$('email').value='';
+  $('city').value='';$('website').value='';$('summary').value='';$('skills').value='';
+  $('experience-list').innerHTML='';$('education-list').innerHTML='';$('project-list').innerHTML='';$('custom-list').innerHTML='';
+  state_exp=[];state_edu=[];state_proj=[];state_custom=[];
+  expCount=0;eduCount=0;projCount=0;customCount=0;
+  sectionOrder=['summary','experience','education','skills','projects'];
+  photoDataUrl='';$('photoPreview').innerHTML='<span class="placeholder">📷</span>';$('photoRemoveBtn').style.display='none';
+  currentTheme={from:'#1e3a5f',to:'#0ea5e9',accent:'#2563eb',light:'#dbeafe',border:'#bfdbfe',text:'#1e40af'};
+  applyThemeToInputs();rebuildOrderChips();
+}
+
+function autoSave(){
+  if(!currentResumeId)return;
+  const data=buildResumeData();
+  const idx=getResumeIndex();
+  const item=idx.find(r=>r.id===currentResumeId);
+  if(item){item.name=data.name||item.name;item.updatedAt=Date.now();saveResumeIndex(idx)}
+  localStorage.setItem(RESUME_PREFIX+currentResumeId,JSON.stringify(data));
+}
+
+function migrateOldData(){
+  const old=localStorage.getItem('resume_pro_data');
+  if(!old)return;
+  try{
+    const d=JSON.parse(old);
+    const idx=getResumeIndex();
+    if(idx.length>0){localStorage.removeItem('resume_pro_data');return}
+    const id=genId();
+    const resumeData={
+      name:d.name||'我的简历',jobTitle:d.jobTitle||'',phone:d.phone||'',email:d.email||'',
+      city:d.city||'',website:d.website||'',summary:d.summary||'',skills:d.skills||'',
+      exps:d.exps||[],edus:d.edus||[],projs:d.projs||[],customs:d.customs||[],
+      theme:d.theme||currentTheme,sectionOrder:d.sectionOrder||['summary','experience','education','skills','projects'],
+      font:d.font||'',fontSize:d.fontSize||14,layout:d.layout||'classic',photo:d.photo||''
+    };
+    localStorage.setItem(RESUME_PREFIX+id,JSON.stringify(resumeData));
+    idx.push({id:id,name:resumeData.name,createdAt:Date.now(),updatedAt:Date.now()});
+    saveResumeIndex(idx);
+    currentResumeId=id;
+    localStorage.removeItem('resume_pro_data');
+  }catch(e){}
+}
+
+/* ===== 基础工具 ===== */
+let currentTheme={from:'#1e3a5f',to:'#0ea5e9',accent:'#2563eb',light:'#dbeafe',border:'#bfdbfe',text:'#1e40af'};
+let sectionOrder=['summary','experience','education','skills','projects'];
+let photoDataUrl='';
+let skipRender=false;
+let dirty=false;
+
+const $=id=>document.getElementById(id);
+const val=id=>$(id).value;
+function showLoading(s){$('loading').classList.toggle('show',s)}
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000)}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/\n/g,'<br>')}
+function escAttr(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function bullets(t){const l=String(t).split('\n').map(x=>x.trim()).filter(Boolean);return l.length<=1?esc(t):'<ul>'+l.map(x=>'<li>'+esc(x.replace(/^[-•*]\s*/,''))+'</li>').join('')+'</ul>'}
+
+/* 回车自动加 "- " 前缀 */
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Enter')return;
+  const ta=e.target;if(!ta||ta.tagName!=='TEXTAREA')return;
+  if(!ta.dataset.f||!['desc','content'].includes(ta.dataset.f))return;
+  e.preventDefault();
+  const start=ta.selectionStart,end=ta.selectionEnd,val=ta.value;
+  const lineStart=val.lastIndexOf('\n',start-1)+1;
+  const currentLine=val.substring(lineStart,start);
+  /* 如果当前行只有 "- " 或 "- "，回车等于清除该空行 */
+  if(currentLine.trim()==='- '||currentLine.trim()==='-'){
+    ta.value=val.substring(0,lineStart)+val.substring(end);
+    ta.selectionStart=ta.selectionEnd=lineStart;
+  }else{
+    const insert='\n- ';
+    ta.value=val.substring(0,start)+insert+val.substring(end);
+    ta.selectionStart=ta.selectionEnd=start+insert.length;
+  }
+  ta.dispatchEvent(new Event('input'));
+});
+
+let renderTimer=null;
+function debouncedRender(){dirty=true;clearTimeout(renderTimer);renderTimer=setTimeout(()=>{render();scheduleSave()},150)}
+
+function handlePhoto(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{photoDataUrl=e.target.result;$('photoPreview').innerHTML='<img src="'+photoDataUrl+'">';$('photoRemoveBtn').style.display='';render()};
+  reader.readAsDataURL(file);
+}
+function removePhoto(){photoDataUrl='';$('photoPreview').innerHTML='<span class="placeholder">📷</span>';$('photoRemoveBtn').style.display='none';$('photoInput').value='';render()}
+
+function scheduleSave(){dirty=true;clearTimeout(renderTimer);renderTimer=setTimeout(autoSave,800)}
+
+function state_exps(){return state_exp.map(e=>{const el=$('exp-'+e._idx);if(!el)return null;return{company:el.querySelector('[data-f="company"]').value,position:el.querySelector('[data-f="position"]').value,start:el.querySelector('[data-f="start"]').value,end:el.querySelector('[data-f="end"]').value,desc:el.querySelector('[data-f="desc"]').value}}).filter(Boolean)}
+function state_edus(){return state_edu.map(e=>{const el=$('edu-'+e._idx);if(!el)return null;return{school:el.querySelector('[data-f="school"]').value,major:el.querySelector('[data-f="major"]').value,start:el.querySelector('[data-f="start"]').value,end:el.querySelector('[data-f="end"]').value}}).filter(Boolean)}
+function state_projs(){return state_proj.map(p=>{const el=$('proj-'+p._idx);if(!el)return null;return{name:el.querySelector('[data-f="name"]').value,tech:el.querySelector('[data-f="tech"]').value,desc:el.querySelector('[data-f="desc"]').value}}).filter(Boolean)}
+function state_customs(){return state_custom.map(c=>{const el=$('custom-'+c._idx);if(!el)return null;return{title:el.querySelector('[data-f="title"]').value,content:el.querySelector('[data-f="content"]').value,idx:c._idx}}).filter(Boolean)}
+
+function clearAll(){
+  if(!confirm('确定清空当前简历所有数据？'))return;
+  currentResumeId=null;
+  clearForm();render();renderResumeList();toast('✅ 已清空');
+}
+
+function applyTheme(t){
+  const r=$('resume');
+  r.style.setProperty('--hdr-from',t.from);r.style.setProperty('--hdr-to',t.to);
+  r.style.setProperty('--accent',t.accent);r.style.setProperty('--accent-light',t.light);
+  r.style.setProperty('--accent-border',t.border);r.style.setProperty('--accent-text',t.text);
+  currentTheme=t;
+}
+
+function setPreset(btn){
+  const t=JSON.parse(btn.dataset.theme);
+  applyTheme(t);applyThemeToInputs();render();scheduleSave();
+}
+
+function applyCustomColor(){
+  const from=$('colorFrom').value,to=$('colorTo').value,accent=$('colorAccent').value;
+  const r=parseInt(accent.slice(1,3),16),g=parseInt(accent.slice(3,5),16),b=parseInt(accent.slice(5,7),16);
+  applyTheme({from,to,accent,light:`rgb(${Math.min(255,r+180)},${Math.min(255,g+180)},${Math.min(255,b+180)})`,border:`rgb(${Math.min(255,r+120)},${Math.min(255,g+120)},${Math.min(255,b+120)})`,text:accent});
+  render();scheduleSave();
+}
+
+function applyThemeToInputs(){
+  document.querySelectorAll('.preset-btn').forEach(b=>{try{const t=JSON.parse(b.dataset.theme);b.classList.toggle('active',t.from===currentTheme.from&&t.to===currentTheme.to)}catch(e){}});
+  $('colorFrom').value=currentTheme.from;$('colorTo').value=currentTheme.to;$('colorAccent').value=currentTheme.accent;
+}
+
+/* ===== 模块顺序：拖拽 + 按钮 ===== */
+let dragChip=null;
+const secLabels={summary:'📝 个人简介',experience:'💼 工作经历',education:'🎓 教育背景',skills:'🛠️ 专业技能',projects:'🚀 项目经验'};
+function getSecLabel(key){
+  if(secLabels[key])return secLabels[key];
+  if(key.startsWith('custom_')){
+    const idx=key.split('_')[1];
+    const el=$('custom-'+idx);
+    if(el){const t=el.querySelector('[data-f="title"]').value;return t?'📌 '+t:'📌 自定义栏目'}
+  }
+  return key;
+}
+
+function rebuildOrderChips(){
+  const c=$('sectionOrder');c.innerHTML='';
+  sectionOrder.forEach((key,i)=>{
+    const chip=document.createElement('span');
+    chip.className='order-chip';chip.draggable=true;chip.dataset.key=key;
+    const label=document.createElement('span');label.textContent=getSecLabel(key);chip.appendChild(label);
+    if(i>0){
+      const btnUp=document.createElement('button');btnUp.className='order-move-btn';btnUp.textContent='↑';
+      btnUp.onclick=function(e){e.stopPropagation();moveSection(key,-1)};
+      chip.appendChild(btnUp);
+    }
+    if(i<sectionOrder.length-1){
+      const btnDown=document.createElement('button');btnDown.className='order-move-btn';btnDown.textContent='↓';
+      btnDown.onclick=function(e){e.stopPropagation();moveSection(key,1)};
+      chip.appendChild(btnDown);
+    }
+    c.appendChild(chip);
+  });
+  initDrag();
+}
+
+function moveSection(key,dir){
+  const idx=sectionOrder.indexOf(key);if(idx<0)return;
+  const newIdx=idx+dir;
+  if(newIdx<0||newIdx>=sectionOrder.length)return;
+  sectionOrder.splice(idx,1);sectionOrder.splice(newIdx,0,key);
+  rebuildOrderChips();render();scheduleSave();
+}
+
+function initDrag(){
+  document.querySelectorAll('.order-chip').forEach(chip=>{
+    chip.ondragstart=e=>{dragChip=chip;chip.classList.add('dragging');e.dataTransfer.effectAllowed='move'};
+    chip.ondragend=()=>{chip.classList.remove('dragging');document.querySelectorAll('.order-chip').forEach(c=>c.classList.remove('drag-over'))};
+    chip.ondragover=e=>{e.preventDefault();chip.classList.add('drag-over')};
+    chip.ondragleave=()=>chip.classList.remove('drag-over');
+    chip.ondrop=e=>{e.preventDefault();chip.classList.remove('drag-over');
+      if(dragChip&&dragChip!==chip){
+        const fi=sectionOrder.indexOf(dragChip.dataset.key),ti=sectionOrder.indexOf(chip.dataset.key);
+        sectionOrder.splice(fi,1);sectionOrder.splice(ti,0,dragChip.dataset.key);
+        rebuildOrderChips();render();scheduleSave();
+      }
+    };
+  });
+}
+
+/* ===== 表单条目管理 ===== */
+let expCount=0,eduCount=0,projCount=0;
+let state_exp=[],state_edu=[],state_proj=[];
+let customCount=0;let state_custom=[];
+
+function addExperience(data){
+  data=data||{};
+  const i=expCount++;const div=document.createElement('div');div.className='item-block';div.id='exp-'+i;
+  div.innerHTML='<button class="remove-btn" onclick="removeItem(\'exp-'+i+'\',\'experience\','+i+')">✕</button>'
+    +'<div class="field"><label>公司</label><input data-f="company" value="'+escAttr(data.company||'')+'" oninput="debouncedRender()" placeholder="字节跳动"></div>'
+    +'<div class="field"><label>职位</label><input data-f="position" value="'+escAttr(data.position||'')+'" oninput="debouncedRender()" placeholder="高级前端工程师"></div>'
+    +'<div class="row"><div class="field"><label>开始</label><input data-f="start" value="'+escAttr(data.start||'')+'" oninput="debouncedRender()" placeholder="2020.06"></div><div class="field"><label>结束</label><input data-f="end" value="'+escAttr(data.end||'')+'" oninput="debouncedRender()" placeholder="至今"></div></div>'
+    +'<div class="field"><label>工作内容（每行一条）</label><textarea data-f="desc" rows="3" oninput="debouncedRender()" placeholder="- 负责核心业务模块开发\\n- 优化首屏加载速度 40%">'+escAttr(data.desc||'')+'</textarea></div>';
+  $('experience-list').appendChild(div);state_exp.push({_idx:i});
+  if(!skipRender)render();
+}
+function addEducation(data){
+  data=data||{};
+  const i=eduCount++;const div=document.createElement('div');div.className='item-block';div.id='edu-'+i;
+  div.innerHTML='<button class="remove-btn" onclick="removeItem(\'edu-'+i+'\',\'education\','+i+')">✕</button>'
+    +'<div class="field"><label>学校</label><input data-f="school" value="'+escAttr(data.school||'')+'" oninput="debouncedRender()" placeholder="北京大学"></div>'
+    +'<div class="field"><label>专业 / 学位</label><input data-f="major" value="'+escAttr(data.major||'')+'" oninput="debouncedRender()" placeholder="计算机科学与技术 · 硕士"></div>'
+    +'<div class="row"><div class="field"><label>开始</label><input data-f="start" value="'+escAttr(data.start||'')+'" oninput="debouncedRender()" placeholder="2014.09"></div><div class="field"><label>结束</label><input data-f="end" value="'+escAttr(data.end||'')+'" oninput="debouncedRender()" placeholder="2018.06"></div></div>';
+  $('education-list').appendChild(div);state_edu.push({_idx:i});
+  if(!skipRender)render();
+}
+function addProject(data){
+  data=data||{};
+  const i=projCount++;const div=document.createElement('div');div.className='item-block';div.id='proj-'+i;
+  div.innerHTML='<button class="remove-btn" onclick="removeItem(\'proj-'+i+'\',\'projects\','+i+')">✕</button>'
+    +'<div class="field"><label>项目名称</label><input data-f="name" value="'+escAttr(data.name||'')+'" oninput="debouncedRender()" placeholder="企业级中台系统"></div>'
+    +'<div class="field"><label>技术栈</label><input data-f="tech" value="'+escAttr(data.tech||'')+'" oninput="debouncedRender()" placeholder="React + TypeScript"></div>'
+    +'<div class="field"><label>项目描述（每行一条）</label><textarea data-f="desc" rows="3" oninput="debouncedRender()" placeholder="- 设计并实现微前端架构\\n- 支撑 2000+ 内部用户使用">'+escAttr(data.desc||'')+'</textarea></div>';
+  $('project-list').appendChild(div);state_proj.push({_idx:i});
+  if(!skipRender)render();
+}
+function removeItem(domId,stateKey,idx){
+  document.getElementById(domId).remove();
+  if(stateKey==='experience')state_exp=state_exp.filter(e=>e._idx!==idx);
+  else if(stateKey==='education')state_edu=state_edu.filter(e=>e._idx!==idx);
+  else if(stateKey==='projects')state_proj=state_proj.filter(e=>e._idx!==idx);
+  else if(stateKey==='custom'){state_custom=state_custom.filter(e=>e._idx!==idx);rebuildOrderChips()}
+  render();
+}
+
+function addCustomSection(data){
+  data=data||{};
+  const i=customCount++;
+  const div=document.createElement('div');div.className='item-block';div.id='custom-'+i;
+  div.innerHTML='<button class="remove-btn" onclick="removeItem(\'custom-'+i+'\',\'custom\','+i+')">✕</button>'
+    +'<div class="field"><label>栏目标题</label><input data-f="title" value="'+escAttr(data.title||'')+'" oninput="debouncedRender();updateCustomLabel('+i+')" placeholder="自我评价 / 证书荣誉 / 语言能力"></div>'
+    +'<div class="field"><label>内容（每行一条）</label><textarea data-f="content" rows="3" oninput="debouncedRender()" placeholder="- 英语流利，CET-6 590分\\n- 持有 PMP 证书">'+escAttr(data.content||'')+'</textarea></div>';
+  $('custom-list').appendChild(div);
+  state_custom.push({_idx:i});
+  const key='custom_'+i;
+  if(!sectionOrder.includes(key))sectionOrder.push(key);
+  rebuildOrderChips();
+  if(!skipRender)render();
+}
+function updateCustomLabel(i){
+  const el=$('custom-'+i);if(!el)return;
+  const title=el.querySelector('[data-f="title"]').value||'自定义';
+  const key='custom_'+i;
+  if(secLabels[key]!==undefined)secLabels[key]='📌 '+title;
+  rebuildOrderChips();
+}
+
+/* ===== 渲染 ===== */
+function render(){
+  const font=val('optFont'),fontSize=val('optFontSize'),layout=val('optLayout');
+  const resume=$('resume');
+  resume.style.fontFamily=font;resume.style.fontSize=fontSize+'px';
+  resume.className='resume-paper'+(layout==='sidebar'?' layout-sidebar':'');
+
+  const name=val('name'),jobTitle=val('jobTitle'),phone=val('phone');
+  const email=val('email'),city=val('city'),website=val('website');
+  const summary=val('summary'),skills=val('skills');
+
+  const contactParts=[];
+  if(phone)contactParts.push('<span>📱 '+esc(phone)+'</span>');
+  if(email)contactParts.push('<span>✉️ '+esc(email)+'</span>');
+  if(city)contactParts.push('<span> '+esc(city)+'</span>');
+  if(website)contactParts.push('<span>出生年月：'+esc(website)+'</span>');
+
+  const skillTags=skills?skills.split(/[,，]/).map(s=>s.trim()).filter(Boolean).map(s=>'<span class="resume-skill-tag">'+esc(s)+'</span>').join(''):'';
+
+  let avatarHtml;
+  if(photoDataUrl)avatarHtml='<div class="resume-avatar"><img src="'+photoDataUrl+'"></div>';
+  else avatarHtml='<div class="resume-avatar">'+(name?esc(name.charAt(0)):'?')+'</div>';
+
+  const sectionHtml={
+    summary:summary?'<div class="resume-section"><div class="resume-section-title">个人简介</div><div class="resume-summary">'+esc(summary)+'</div></div>':'',
+    experience:buildExpHtml(),education:buildEduHtml(),
+    skills:skillTags?'<div class="resume-section"><div class="resume-section-title">专业技能</div><div class="resume-skills">'+skillTags+'</div></div>':'',
+    projects:buildProjHtml()
+  };
+  state_custom.forEach(c=>{
+    const el=$('custom-'+c._idx);if(!el)return;
+    const title=el.querySelector('[data-f="title"]').value||'自定义栏目';
+    const content=el.querySelector('[data-f="content"]').value;
+    if(content)sectionHtml['custom_'+c._idx]='<div class="resume-section"><div class="resume-section-title">'+esc(title)+'</div><div class="resume-item-desc">'+bullets(content)+'</div></div>';
+  });
+
+  const headerHtml='<div class="resume-header"><div class="resume-header-inner">'+avatarHtml+'<div class="resume-header-text"><div class="resume-name">'+(esc(name)||'你的姓名')+'</div><div class="resume-title">'+(esc(jobTitle)||'求职意向')+'</div></div></div><div class="resume-contact">'+(contactParts.join('')||'<span>填写联系方式</span>')+'</div></div>';
+
+  if(layout==='sidebar'){
+    const left=[sectionHtml.education,sectionHtml.skills].filter(Boolean).join('');
+    const right=sectionOrder.filter(k=>k!=='education'&&k!=='skills').map(k=>sectionHtml[k]||'').join('');
+    resume.innerHTML=headerHtml+'<div class="resume-body"><div class="resume-sidebar-col">'+left+'</div><div class="resume-main-col">'+right+'</div></div>';
+  }else{
+    resume.innerHTML=headerHtml+'<div class="resume-body">'+sectionOrder.map(k=>sectionHtml[k]||'').join('')+'</div>';
+  }
+
+  applyTheme(currentTheme);
+}
+
+function buildExpHtml(){
+  const items=state_exp.map(e=>{
+    const el=$('exp-'+e._idx);if(!el)return '';
+    const c=el.querySelector('[data-f="company"]').value,p=el.querySelector('[data-f="position"]').value;
+    const s=el.querySelector('[data-f="start"]').value,en=el.querySelector('[data-f="end"]').value;
+    const d=el.querySelector('[data-f="desc"]').value;
+    return '<div class="resume-item"><div class="resume-item-header"><span class="resume-item-title">'+esc(c)+'</span><span class="resume-item-date">'+esc(s)+(s||en?' — ':'')+esc(en)+'</span></div><div class="resume-item-sub">'+esc(p)+'</div><div class="resume-item-desc">'+bullets(d)+'</div></div>';
+  }).join('');
+  return items?'<div class="resume-section"><div class="resume-section-title">工作经历</div>'+items+'</div>':'';
+}
+function buildEduHtml(){
+  const items=state_edu.map(e=>{
+    const el=$('edu-'+e._idx);if(!el)return '';
+    const sc=el.querySelector('[data-f="school"]').value,m=el.querySelector('[data-f="major"]').value;
+    const s=el.querySelector('[data-f="start"]').value,en=el.querySelector('[data-f="end"]').value;
+    return '<div class="resume-item"><div class="resume-item-header"><span class="resume-item-title">'+esc(sc)+'</span><span class="resume-item-date">'+esc(s)+(s||en?' — ':'')+esc(en)+'</span></div><div class="resume-item-sub">'+esc(m)+'</div></div>';
+  }).join('');
+  return items?'<div class="resume-section"><div class="resume-section-title">教育背景</div>'+items+'</div>':'';
+}
+function buildProjHtml(){
+  const items=state_proj.map(p=>{
+    const el=$('proj-'+p._idx);if(!el)return '';
+    const n=el.querySelector('[data-f="name"]').value,t=el.querySelector('[data-f="tech"]').value;
+    const d=el.querySelector('[data-f="desc"]').value;
+    return '<div class="resume-item"><div class="resume-item-title">'+esc(n)+'</div>'+(t?'<div class="resume-item-sub">'+esc(t)+'</div>':'')+'<div class="resume-item-desc">'+bullets(d)+'</div></div>';
+  }).join('');
+  return items?'<div class="resume-section"><div class="resume-section-title">项目经验</div>'+items+'</div>':'';
+}
+
+/* ===== 导出 ===== */
+async function exportPDF(){
+  clearTimeout(renderTimer);render();autoSave();
+  showLoading(true);await new Promise(r=>setTimeout(r,200));
+  const el=$('resume');const os=el.style.boxShadow;el.style.boxShadow='none';
+  try{
+    const canvas=await html2canvas(el,{scale:2,useCORS:true,logging:false,backgroundColor:'#ffffff'});
+    const imgData=canvas.toDataURL('image/jpeg',0.98);
+    const mmW=canvas.width*25.4/96/2,mmH=canvas.height*25.4/96/2;
+    const Ctor=(window.jspdf&&window.jspdf.jsPDF)||(typeof jsPDF!=='undefined'?jsPDF:null);
+    if(!Ctor)throw new Error('jsPDF not loaded');
+    const pdf=new Ctor({unit:'mm',format:[mmW,mmH],orientation:mmW>mmH?'landscape':'portrait'});
+    pdf.addImage(imgData,'JPEG',0,0,mmW,mmH);
+    pdf.save((val('name')||'简历')+'.pdf');
+  }catch(e){alert('导出 PDF 失败: '+e.message)}finally{el.style.boxShadow=os}
+  showLoading(false);
+}
+async function exportJPG(){
+  clearTimeout(renderTimer);render();autoSave();
+  showLoading(true);await new Promise(r=>setTimeout(r,200));
+  const el=$('resume');const os=el.style.boxShadow;el.style.boxShadow='none';
+  try{
+    const canvas=await html2canvas(el,{scale:2,useCORS:true,logging:false,backgroundColor:'#ffffff'});
+    const link=document.createElement('a');link.download=(val('name')||'简历')+'.jpg';link.href=canvas.toDataURL('image/jpeg',0.95);link.click();
+  }catch(e){alert('导出失败: '+e.message)}
+  finally{el.style.boxShadow=os}
+  showLoading(false);
+}
+
+/* ===== 示例数据 ===== */
+function loadSample(){
+  $('name').value='张三';$('jobTitle').value='高级前端工程师';
+  $('phone').value='138-8888-8888';$('email').value='zhangsan@example.com';
+  $('city').value='北京';$('website').value='2001.12';
+  $('summary').value='拥有 8 年前端开发经验，精通 React、Vue 生态及 TypeScript。曾主导多个大型 Web 应用的架构设计与性能优化，具备优秀的团队协作与技术方案输出能力。热爱开源，GitHub 2000+ Star。';
+  $('skills').value='React, Vue 3, TypeScript, Node.js, Webpack, Vite, TailwindCSS, GraphQL, Docker, CI/CD, 微前端, 性能优化';
+  $('experience-list').innerHTML='';$('education-list').innerHTML='';$('project-list').innerHTML='';$('custom-list').innerHTML='';
+  state_exp=[];state_edu=[];state_proj=[];state_custom=[];expCount=0;eduCount=0;projCount=0;customCount=0;
+  sectionOrder=['summary','experience','education','skills','projects'];
+  skipRender=true;
+  addExperience({company:'字节跳动',position:'高级前端工程师',start:'2021.03',end:'至今',desc:'- 主导企业级中台系统前端架构设计，支撑 3000+ 内部用户\n- 实施微前端改造，将构建速度从 5min 降至 45s\n- 建立前端性能监控体系，FCP 降低 40%\n- 指导初级工程师，组织团队技术分享'});
+  addExperience({company:'阿里巴巴',position:'前端工程师',start:'2018.07',end:'2021.02',desc:'- 负责淘宝营销活动页面开发，累计服务数亿 PV\n- 参与内部组件库建设，覆盖 60+ 通用组件\n- 推动 SSR 方案落地，首屏渲染提速 60%'});
+  addEducation({school:'北京大学',major:'计算机科学与技术 · 硕士',start:'2016.09',end:'2018.06'});
+  addEducation({school:'浙江大学',major:'软件工程 · 学士',start:'2012.09',end:'2016.06'});
+  addProject({name:'企业级微前端中台',tech:'qiankun + React + TypeScript + Zustand',desc:'- 设计并实现基于 qiankun 的微前端架构，支持 15+ 子应用独立部署\n- 开发统一的权限、路由、状态管理方案\n- 日均活跃用户 3000+，系统可用性 99.9%'});
+  addProject({name:'前端性能监控平台',tech:'Vue 3 + ECharts + Node.js + ClickHouse',desc:'- 自研 SDK 采集 FCP/LCP/CLS 等核心指标\n- 构建可视化分析面板，支持多维度数据筛选\n- 接入 50+ 业务线，日处理数据量 1亿+'});
+  addCustomSection({title:'荣誉奖项',content:'- 2023 年度最佳员工\n- 字节跳动 Hackathon 一等奖\n- 开源项目 Vue-Mini 2000+ Star'});
+  addCustomSection({title:'语言能力',content:'- 英语流利，可作为工作语言\n- CET-6 590 分\n- 托福 100+'});
+  skipRender=false;
+  render();toast('✅ 示例数据已加载');
+}
+
+/* ===== 初始化 ===== */
+migrateOldData();
+const idx=getResumeIndex();
+if(idx.length>0){
+  currentResumeId=idx[0].id;
+  const raw=localStorage.getItem(RESUME_PREFIX+currentResumeId);
+  if(raw)applyResumeData(JSON.parse(raw));
+  else{rebuildOrderChips();render()}
+}else{
+  rebuildOrderChips();render();
+}
+renderResumeList();
+</script>
+</body>
+</html>
