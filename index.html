@@ -4,88 +4,185 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>简历生成器 Pro</title>
+<!-- 页面图标：内联 SVG，不用另存 favicon 文件（# 在 data URI 里要写成 %23） -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232f5be0'/%3E%3Cg fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19.5 6H12a2.5 2.5 0 0 0-2.5 2.5v15A2.5 2.5 0 0 0 12 26h8a2.5 2.5 0 0 0 2.5-2.5V11z'/%3E%3Cpath d='M19 6v4.5h5'/%3E%3Cpath d='M13.5 16.5h5M13.5 21h3'/%3E%3C/g%3E%3C/svg%3E">
+<meta name="theme-color" content="#2f5be0">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
-:root{--primary:#2563eb;--primary-dark:#1d4ed8;--bg:#f1f5f9;--card:#fff;--text:#1e293b;--text-light:#64748b;--border:#e2e8f0;--accent:#0ea5e9}
+/* ===== 设计令牌 =====
+   界面自己的配色统一收在这里：品牌蓝 + 中性灰阶，8/10/14 三档圆角。
+   简历纸面的配色是另一套（.resume-paper 上的 --hdr-from/--accent 等，跟着主题
+   预设走），两套互不干扰 —— 换简历主题不会把界面也染一遍。 */
+:root{
+  --brand:#2f5be0;--brand-dark:#2347c0;--brand-soft:#eef3ff;--brand-line:#c9d9ff;
+  --bg:#f4f6fa;--card:#fff;--text:#1e293b;--text-2:#5b6577;--text-3:#8d97a8;
+  --line:#e5e9f1;--line-2:#d3dae6;
+  --ok:#0d9b74;--warn:#c97a10;--danger:#d94a4a;
+  --r-sm:8px;--r:10px;--r-lg:14px;
+  --shadow-1:0 1px 2px rgba(16,24,40,.04);
+  --shadow-2:0 8px 24px rgba(16,24,40,.08);
+  /* 旧变量名保留：纸面和少量旧样式还在引用 */
+  --primary:var(--brand);--primary-dark:var(--brand-dark);--accent:var(--brand);
+  --text-light:var(--text-2);--border:var(--line);
+}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text)}
+/* ===== 图标 =====
+   顶部的 <svg class="svg-sprite"> 里定义了一套 symbol，界面上一律写成
+   <svg class="i"><use href="#i-xxx"/></svg>。描边参数放在这里、颜色用
+   currentColor，图标就自动跟着文字色走（原来满屏的 emoji 是彩色位图，
+   跟界面配色打架，字号不同渲染也不同）。
+   注意：这套只用于界面。简历纸面上的图标仍走 JS 里的 ICON_PATHS 内联完整
+   <path>，因为 html2canvas 是逐个元素序列化的，引用外部 <use> 的地方导不出图。 */
+.svg-sprite{position:absolute;width:0;height:0;overflow:hidden}
+.i{width:16px;height:16px;flex:0 0 auto;display:block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.i-xl{width:24px;height:24px}
+.f-ok{color:var(--ok)}.f-warn{color:var(--warn)}.f-danger{color:var(--danger)}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',Roboto,sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}
 .app{display:flex;min-height:100vh}
-.sidebar{width:440px;min-width:440px;background:var(--card);border-right:1px solid var(--border);height:100vh;position:sticky;top:0;display:flex;flex-direction:column}
-.sidebar-header{padding:20px 24px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,var(--primary),var(--accent));color:#fff}
-.sidebar-header h1{font-size:22px;font-weight:700}
-.sidebar-header p{font-size:13px;opacity:.85;margin-top:4px}
-.sidebar-body{flex:1;overflow-y:auto;padding:20px 24px}
-.sidebar-footer{padding:12px 24px;border-top:1px solid var(--border);font-size:12px;color:var(--text-light);text-align:center}
-.preview-area{flex:1;display:flex;flex-direction:column;align-items:center;padding:32px;overflow-y:auto}
-.toolbar{display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;justify-content:center;align-items:center}
-.toolbar button{padding:10px 20px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
-.btn-pdf{background:var(--primary);color:#fff}
-.btn-pdf:hover{background:var(--primary-dark);transform:translateY(-1px);box-shadow:0 4px 12px rgba(37,99,235,.3)}
-.btn-jpg{background:#059669;color:#fff}
-.btn-jpg:hover{background:#047857;transform:translateY(-1px);box-shadow:0 4px 12px rgba(5,150,105,.3)}
-.btn-print{background:#6366f1;color:#fff}
-.btn-print:hover{background:#4f46e5}
-.btn-reset{background:#f1f5f9;color:#475569;border:1px solid var(--border)!important}
-.btn-reset:hover{background:#e2e8f0}
-.btn-sample{background:#f59e0b;color:#fff}
-.btn-sample:hover{background:#d97706}
-.btn-save{background:#8b5cf6;color:#fff}
-.btn-save:hover{background:#7c3aed}
-.theme-panel{background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px}
-.theme-panel-title{font-size:13px;font-weight:700;color:var(--text-light);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px}
-.preset-themes{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
-.preset-btn{width:36px;height:36px;border-radius:8px;border:3px solid transparent;cursor:pointer;transition:all .2s;position:relative}
-.preset-btn:hover{transform:scale(1.1)}
-.preset-btn.active{border-color:var(--text);box-shadow:0 0 0 2px #fff,0 0 0 4px var(--text)}
-.preset-btn::after{content:attr(data-label);position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--text-light);white-space:nowrap;opacity:0;transition:opacity .2s}
-.preset-btn:hover::after{opacity:1}
+.sidebar{width:440px;min-width:440px;background:var(--card);border-right:1px solid var(--line);height:100vh;position:sticky;top:0;display:flex;flex-direction:column}
+/* 页头改成深墨底 + 一抹径向蓝光：比原来的饱和渐变稳，也不会跟右侧
+   简历主题（海洋蓝/翡翠绿/星空紫…）撞色 */
+.sidebar-header{padding:18px 22px;background:linear-gradient(150deg,#111a2c,#1d3055 58%,#26406e);color:#fff;display:flex;align-items:center;gap:12px;position:relative;overflow:hidden}
+.sidebar-header::after{content:'';position:absolute;right:-50px;top:-70px;width:190px;height:190px;border-radius:50%;background:radial-gradient(circle,rgba(92,142,255,.5),transparent 68%);pointer-events:none}
+.brand-mark{width:38px;height:38px;border-radius:11px;background:linear-gradient(140deg,#5b8bff,#2f5be0);display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:0 6px 14px rgba(47,91,224,.35);position:relative;z-index:1}
+.brand-mark .i{width:19px;height:19px}
+.brand-text{position:relative;z-index:1}
+.sidebar-header h1{font-size:17px;font-weight:700;letter-spacing:.4px;display:flex;align-items:center;gap:7px}
+.sidebar-header h1 .pro{font-size:9px;font-weight:700;letter-spacing:1.2px;padding:2px 6px;border-radius:5px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.26);color:rgba(255,255,255,.92)}
+.sidebar-header p{font-size:12px;color:rgba(255,255,255,.6);margin-top:4px}
+.sidebar-body{flex:1;overflow-y:auto;padding:16px 20px 24px}
+.sidebar-body::-webkit-scrollbar{width:10px}
+.sidebar-body::-webkit-scrollbar-thumb{background:#dde3ec;border:3px solid #fff;border-radius:99px}
+.sidebar-body::-webkit-scrollbar-thumb:hover{background:#c6cfdc}
+.sidebar-footer{padding:11px 20px;border-top:1px solid var(--line);font-size:11.5px;color:var(--text-3);text-align:center;background:#fcfdfe}
+.preview-area{flex:1;display:flex;flex-direction:column;align-items:center;padding:30px 32px 48px;overflow-y:auto;background-image:radial-gradient(var(--line) 1px,transparent 1px);background-size:22px 22px;background-position:-1px -1px}
+/* ===== 工具栏 =====
+   一排九个按钮、还有两个能一键毁数据的（示例/清空）紧挨着导出，很容易点错。
+   现在只留最常用的四个在外面：输出三件套 + 写入文件；其余收进「更多」折叠菜单。 */
+/* position/z-index 不能省：工具栏在 DOM 里排在 .resume-paper 前面，
+   而纸面是 position:relative，不抬层的话展开的菜单会被纸面盖住。 */
+.toolbar{position:relative;z-index:30;display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:100%;max-width:1040px;margin-bottom:12px;padding:8px 10px;background:rgba(255,255,255,.78);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-1)}
+.tb-group{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
+/* 状态文字（「已从 xxx 载入」之类）放在工具栏中间的空档里，不再单独占一行。
+   flex-basis 用 0，免得它把右边的按钮挤到下一行去。 */
+.toolbar .hint{flex:1 1 0;min-width:0;margin:0 0 0 6px;padding:0;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:0}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 13px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--text-2);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .16s;box-shadow:var(--shadow-1);white-space:nowrap}
+.btn:hover{border-color:var(--line-2);background:#fbfcfe;color:var(--text);transform:translateY(-1px);box-shadow:var(--shadow-2)}
+.btn:active{transform:translateY(0);box-shadow:var(--shadow-1)}
+.btn .i{width:15px;height:15px;color:var(--text-3);transition:color .16s}
+.btn:hover .i{color:var(--brand)}
+.btn-primary{background:linear-gradient(180deg,#3a68ee,#2a52d6);border-color:#2a52d6;color:#fff;box-shadow:0 6px 16px rgba(47,91,224,.28)}
+.btn-primary:hover{background:linear-gradient(180deg,#3260e8,#2148c6);border-color:#2148c6;color:#fff}
+.btn-primary .i,.btn-primary:hover .i{color:#fff}
+/* 有没写回文件的改动时变琥珀色 —— 光看按钮就知道有没有东西没落盘 */
+.btn-write.dirty{background:#fff8ec;border-color:#f0cf9a;color:#9a6511}
+.btn-write.dirty:hover{background:#fff3e0;border-color:#e0b877}
+.btn-write.dirty .i,.btn-write.dirty:hover .i{color:#c9800f}
+.btn-write .dot{width:6px;height:6px;border-radius:50%;background:var(--warn);display:none;margin-left:-2px}
+.btn-write.dirty .dot{display:block}
+/* 「更多」折叠菜单：低频操作和危险操作都挪进来，避免误点 */
+.tb-more{position:relative}
+.tb-menu{position:absolute;top:calc(100% + 8px);right:0;min-width:236px;background:#fff;border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:0 18px 44px rgba(16,24,40,.18);padding:6px;display:none;z-index:60;text-align:left}
+.tb-more.open .tb-menu{display:block}
+.tb-more.open .caret{transform:rotate(180deg)}
+.caret{width:13px;height:13px;transition:transform .18s}
+.tb-menu button,.tb-menu .mi{display:flex;align-items:center;gap:9px;width:100%;padding:9px 10px;border:none;background:none;border-radius:var(--r-sm);font-size:13px;font-weight:600;color:var(--text-2);font-family:inherit;cursor:pointer;text-align:left;transition:background .14s,color .14s}
+.tb-menu button:hover,.tb-menu .mi:hover{background:#f4f7fd;color:var(--text)}
+.tb-menu .i{width:15px;height:15px;color:var(--text-3);transition:color .14s}
+.tb-menu button:hover .i{color:var(--brand)}
+.tb-menu .danger{color:var(--danger)}
+.tb-menu .danger:hover{background:#fdf2f2;color:var(--danger)}
+.tb-menu .danger .i,.tb-menu .danger:hover .i{color:var(--danger)}
+.tb-menu .mi-note{font-size:11px;font-weight:500;color:var(--text-3);margin-left:auto}
+/* 菜单里的一行说明（比如当前写入目标是谁） */
+.tb-menu .mi-info{font-size:11px;color:var(--text-3);padding:3px 10px 8px;line-height:1.5;word-break:break-all}
+.tb-menu hr{border:none;border-top:1px solid var(--line);margin:5px 6px}
+.tb-menu .mi input[type=checkbox]{width:15px;height:15px;accent-color:var(--brand);cursor:pointer;margin:0 0 0 auto}
+.hint{font-size:12px;color:var(--text-3);margin:0 0 16px;text-align:center;min-height:16px}
+/* 侧栏里的几块面板统一成同一种卡片：白底 + 细边 + 一点投影，
+   顺序上「简历/头像/配色/版式/模块」是一组，下面才是具体内容字段 */
+.panel-title,.theme-panel-title,.section-order-title,.resume-manager-title{font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.panel-title .i,.theme-panel-title .i,.section-order-title .i,.resume-manager-title .i{width:15px;height:15px;color:var(--brand)}
+.count{font-size:11px;font-weight:600;color:var(--text-3);background:#f2f5fa;border-radius:6px;padding:1px 6px;letter-spacing:0}
+.theme-panel,.section-order,.resume-manager{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px 16px;margin-bottom:12px;box-shadow:var(--shadow-1)}
+.preset-themes{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:22px}
+.preset-btn{width:34px;height:34px;border-radius:9px;border:2px solid rgba(255,255,255,.9);cursor:pointer;transition:all .18s;position:relative;box-shadow:0 0 0 1px var(--line),0 1px 3px rgba(16,24,40,.12);padding:0;display:flex;align-items:center;justify-content:center}
+.preset-btn:hover{transform:translateY(-2px) scale(1.04);box-shadow:0 0 0 1px var(--line-2),0 6px 14px rgba(16,24,40,.16)}
+.preset-btn .tick{width:13px;height:13px;color:#fff;opacity:0;stroke-width:3;transition:opacity .18s;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+.preset-btn.active{box-shadow:0 0 0 1px var(--line),0 0 0 3px var(--brand-soft),0 0 0 4px var(--brand-line)}
+.preset-btn.active .tick{opacity:1}
+/* 悬停出的色名做成小气泡，别再用 9px 的灰字（基本看不清） */
+.preset-btn::after{content:attr(data-label);position:absolute;bottom:-24px;left:50%;transform:translateX(-50%) translateY(-3px);font-size:10px;font-weight:600;color:#fff;background:#1e293b;white-space:nowrap;padding:3px 7px;border-radius:6px;opacity:0;pointer-events:none;transition:all .18s;z-index:5}
+.preset-btn:hover::after{opacity:1;transform:translateX(-50%) translateY(0)}
 .custom-colors{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-.color-field label{font-size:11px;font-weight:600;color:var(--text-light);display:block;margin-bottom:4px}
-.color-field input[type="color"]{width:100%;height:32px;border:1px solid var(--border);border-radius:6px;padding:2px;cursor:pointer;background:#fff}
-.options-row{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
-.opt-group{flex:1;min-width:120px}
-.opt-group label{font-size:11px;font-weight:600;color:var(--text-light);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
-.opt-group select,.opt-group input[type="range"]{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:#fafbfc;cursor:pointer}
-.opt-group select:focus{outline:none;border-color:var(--primary)}
-.opt-group input[type="range"]{padding:0;height:6px;-webkit-appearance:none;background:#e2e8f0;border-radius:3px;border:none;margin-top:6px}
-.opt-group input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;background:var(--primary);border-radius:50%;cursor:pointer}
-.section-order{margin-bottom:20px}
-.section-order-title{font-size:13px;font-weight:700;color:var(--text-light);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
+.color-field label{font-size:11px;font-weight:600;color:var(--text-3);display:block;margin-bottom:5px}
+.color-field input[type="color"]{width:100%;height:30px;border:1px solid var(--line);border-radius:var(--r-sm);padding:2px;cursor:pointer;background:#fff}
+.color-field input[type="color"]:hover{border-color:var(--line-2)}
+.options-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.opt-group{min-width:0}
+.opt-group.wide{grid-column:1/-1}
+.opt-group label{font-size:11px;font-weight:600;color:var(--text-3);display:block;margin-bottom:5px}
+.opt-group label .val{color:var(--brand);font-weight:700}
+.opt-group select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-sm);font-size:13px;font-family:inherit;background:#fbfcfe;color:var(--text);cursor:pointer;transition:all .16s}
+.opt-group select:hover{border-color:var(--line-2);background:#fff}
+.opt-group select:focus{outline:none;border-color:var(--brand);background:#fff;box-shadow:0 0 0 3px var(--brand-soft)}
+.opt-group input[type="range"]{width:100%;padding:0;height:6px;-webkit-appearance:none;background:#e6ebf3;border-radius:3px;border:none;margin-top:9px;cursor:pointer}
+.opt-group input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;background:#fff;border:2px solid var(--brand);border-radius:50%;cursor:pointer;box-shadow:0 1px 4px rgba(47,91,224,.35);transition:transform .15s}
+.opt-group input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.12)}
 .order-list{display:flex;flex-wrap:wrap;gap:6px}
-.order-chip{padding:6px 12px;background:#f1f5f9;border:1px solid var(--border);border-radius:20px;font-size:12px;font-weight:600;cursor:grab;user-select:none;transition:all .15s;display:flex;align-items:center;gap:6px}
-.order-chip:active{cursor:grabbing;background:#dbeafe;border-color:var(--primary)}
+.order-chip{padding:5px 6px 5px 10px;background:#f7f9fc;border:1px solid var(--line);border-radius:9px;font-size:12px;font-weight:600;color:var(--text-2);cursor:grab;user-select:none;transition:all .15s;display:flex;align-items:center;gap:5px}
+.order-chip:hover{border-color:var(--brand-line);background:#fff;color:var(--brand)}
+.order-chip .i{width:13px;height:13px;color:var(--text-3)}
+.order-chip:hover .i{color:var(--brand)}
+.order-chip:active{cursor:grabbing;background:var(--brand-soft);border-color:var(--brand)}
 .order-chip.dragging{opacity:.4}
-.order-chip.drag-over{border-color:var(--primary);background:#dbeafe;transform:scale(1.05)}
-.order-move-btn{background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:11px;padding:1px 5px;color:var(--text-light);transition:all .15s;line-height:1}
-.order-move-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary)}
-.photo-upload{display:flex;align-items:center;gap:16px;margin-bottom:16px;padding:14px;background:#f8fafc;border:1px solid var(--border);border-radius:10px}
-.photo-preview{width:64px;height:64px;border-radius:50%;border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;background:#f1f5f9;cursor:pointer;transition:all .2s}
-.photo-preview:hover{border-color:var(--primary);background:#eff6ff}
+.order-chip.drag-over{border-color:var(--brand);background:var(--brand-soft);transform:scale(1.05)}
+.order-move-btn{background:none;border:none;border-radius:5px;cursor:pointer;padding:2px;color:var(--text-3);transition:all .15s;display:flex;align-items:center}
+.order-move-btn .i{width:13px;height:13px}
+.order-move-btn:hover{background:var(--brand-soft);color:var(--brand);border:none}
+.photo-upload{display:flex;align-items:center;gap:14px;margin-bottom:12px;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-1)}
+.photo-preview{width:58px;height:58px;border-radius:50%;border:2px dashed var(--line-2);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;background:#f7f9fc;cursor:pointer;transition:all .18s}
+.photo-preview .i{width:22px;height:22px;color:var(--text-3)}
+.photo-preview:hover{border-color:var(--brand);background:var(--brand-soft);border-style:solid}
+.photo-preview:hover .i{color:var(--brand)}
 .photo-preview img{width:100%;height:100%;object-fit:cover}
-.photo-preview .placeholder{font-size:24px;color:var(--text-light)}
-.photo-info{flex:1}
-.photo-info p{font-size:12px;color:var(--text-light);margin-bottom:6px}
-.photo-info button{padding:6px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s}
-.photo-btn-upload{background:var(--primary);color:#fff;margin-right:6px}
-.photo-btn-upload:hover{background:var(--primary-dark)}
-.photo-btn-remove{background:#fee2e2;color:#dc2626}
-.photo-btn-remove:hover{background:#fecaca}
-.section{margin-bottom:24px}
-.section-title{font-size:15px;font-weight:700;color:var(--primary);margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--primary);display:flex;align-items:center;gap:8px}
-.field{margin-bottom:12px}
-.field label{display:block;font-size:12px;font-weight:600;color:var(--text-light);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
-.field input,.field textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:inherit;transition:border-color .2s;background:#fafbfc}
-.field input:focus,.field textarea:focus{outline:none;border-color:var(--primary);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
-.field textarea{resize:vertical;min-height:70px}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.item-block{background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px;position:relative}
-.item-block .remove-btn{position:absolute;top:8px;right:8px;background:#fee2e2;color:#dc2626;border:none;border-radius:4px;width:24px;height:24px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
-.item-block .remove-btn:hover{background:#fecaca}
-.add-btn{width:100%;padding:10px;border:2px dashed var(--border);border-radius:8px;background:transparent;color:var(--primary);font-size:14px;font-weight:600;cursor:pointer;transition:all .2s}
-.add-btn:hover{border-color:var(--primary);background:rgba(37,99,235,.04)}
-.resume-paper{width:210mm;background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.12);padding:0;position:relative;overflow:hidden;flex-shrink:0;--hdr-from:#1e3a5f;--hdr-to:#0ea5e9;--accent:#2563eb;--accent-light:#dbeafe;--accent-border:#bfdbfe;--accent-text:#1e40af}
-.resume-header{color:#fff;padding:40px 48px 36px;position:relative;background:linear-gradient(135deg,var(--hdr-from),var(--hdr-to))}
+.photo-info{flex:1;min-width:0}
+.photo-info p{font-size:12px;color:var(--text-2);margin-bottom:7px;font-weight:600}
+.photo-info button{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border:none;border-radius:var(--r-sm);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .18s}
+.photo-info button .i{width:13px;height:13px}
+.photo-btn-upload{background:var(--brand);color:#fff;margin-right:6px}
+.photo-btn-upload:hover{background:var(--brand-dark)}
+.photo-btn-upload .i{color:#fff}
+.photo-btn-remove{background:#fdf2f2;color:var(--danger)}
+.photo-btn-remove:hover{background:#fbe4e4}
+/* 每个表单栏目是一张卡片，栏目标题不再用蓝底横线（那是纸面的语言，
+   界面里满屏的蓝横线太吵） */
+.section{margin-bottom:12px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px 16px 16px;box-shadow:var(--shadow-1)}
+.section-title{font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.section-title .i{width:15px;height:15px;color:var(--brand)}
+.field{margin-bottom:11px}
+.field:last-child{margin-bottom:0}
+.field label{display:block;font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:5px}
+.field input,.field textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r-sm);font-size:13.5px;font-family:inherit;color:var(--text);transition:all .16s;background:#fbfcfe}
+.field input::placeholder,.field textarea::placeholder{color:#aab3c2}
+.field input:hover,.field textarea:hover{border-color:var(--line-2);background:#fff}
+.field input:focus,.field textarea:focus{outline:none;border-color:var(--brand);background:#fff;box-shadow:0 0 0 3px var(--brand-soft)}
+/* resize:none 是配合下面 autoGrow 的自动高度 —— 留着拖拽手柄会和
+   自动高度互相打架：你拖大一点，敲一个字就被弹回去 */
+.field textarea{resize:none;min-height:70px;line-height:1.6}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.item-block{background:#fbfcfe;border:1px solid var(--line);border-radius:var(--r);padding:12px 13px 13px;margin-bottom:10px;position:relative;transition:border-color .16s}
+.item-block:hover{border-color:var(--line-2)}
+.item-block .remove-btn{position:absolute;top:8px;right:8px;background:transparent;color:var(--text-3);border:none;border-radius:6px;width:24px;height:24px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .16s}
+.item-block .remove-btn .i{width:14px;height:14px}
+.item-block .remove-btn:hover{background:#fdf2f2;color:var(--danger)}
+.add-btn{width:100%;padding:9px;border:1px dashed var(--line-2);border-radius:var(--r);background:transparent;color:var(--text-2);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .18s;display:flex;align-items:center;justify-content:center;gap:6px}
+.add-btn .i{width:14px;height:14px;transition:transform .18s}
+.add-btn:hover{border-color:var(--brand);background:var(--brand-soft);color:var(--brand);border-style:solid}
+.add-btn:hover .i{transform:rotate(90deg)}
+.resume-paper{width:210mm;background:#fff;box-shadow:0 10px 30px rgba(16,24,40,.10),0 1px 3px rgba(16,24,40,.06);padding:0;position:relative;overflow:hidden;flex-shrink:0;--hdr-from:#1e3a5f;--hdr-to:#0ea5e9;--accent:#2563eb;--accent-light:#dbeafe;--accent-border:#bfdbfe;--accent-text:#1e40af}
+.resume-header{color:#fff;padding:20px 48px 16px;position:relative;background:linear-gradient(135deg,var(--hdr-from),var(--hdr-to))}
 .resume-header::after{content:'';position:absolute;bottom:-20px;left:0;right:0;height:40px;background:#fff;border-radius:50% 50% 0 0/100% 100% 0 0}
 .resume-header-inner{display:flex;align-items:center;gap:24px}
 .resume-avatar{width:80px;height:80px;border-radius:50%;border:3px solid rgba(255,255,255,.4);object-fit:cover;flex-shrink:0;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:32px;color:#fff;overflow:hidden}
@@ -93,93 +190,186 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .resume-header-text{flex:1}
 .resume-name{font-size:36px;font-weight:800;letter-spacing:2px;margin-bottom:2px}
 .resume-title{font-size:16px;font-weight:400;opacity:.9;letter-spacing:1px}
-.resume-contact{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;font-size:13px;opacity:.9}
-.resume-contact span{display:flex;align-items:center;gap:5px}
-.resume-body{padding:24px 48px 48px}
-.resume-section{margin-bottom:28px}
-.resume-section-title{font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:2px;padding-bottom:8px;border-bottom:2px solid;margin-bottom:14px;display:flex;align-items:center;gap:8px;color:var(--accent);border-bottom-color:var(--accent)}
+/* position/z-index：页头的白色弧形 ::after 是绝对定位，会盖住这一行图标的顶部。
+   抬起一层就解决了，比加间距省空间 */
+.resume-contact{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:16px;padding:0 48px;font-size:13px;color:#475569;position:relative;z-index:1}
+.resume-contact span{display:flex;align-items:center;gap:6px}
+/* 16px：这一行的高度是文字行盒（19px）撑的，图标放大不增加行高 */
+.resume-contact .ico{width:16px;height:16px;flex:0 0 auto;color:var(--accent-text);overflow:visible}
+.resume-body{padding:12px 48px 16px}
+.resume-section{margin-bottom:15px}
+.resume-section-title{font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:2px;padding-bottom:6px;border-bottom:2px solid;margin-bottom:10px;display:flex;align-items:center;gap:8px;color:var(--accent);border-bottom-color:var(--accent)}
 .resume-section-title::before{content:'';width:4px;height:18px;border-radius:2px;background:var(--accent)}
-.resume-summary{font-size:14px;line-height:1.7;color:#475569}
-.resume-item{margin-bottom:16px}
+/* 点预览里的栏目标题 → 左侧表单滚到对应栏目，见 jumpToFormSection() */
+.resume-section-title{cursor:pointer;user-select:none}
+.resume-section-title:hover{opacity:.72}
+.section-title.flash{animation:secFlash 1.1s ease;border-radius:var(--r-sm)}
+@keyframes secFlash{0%,100%{background:transparent}25%{background:var(--brand-soft)}}
+/* 反向：鼠标移到左侧编辑区 → 右侧对应栏目标题高亮，见 setPing() */
+.resume-section-title.ping{background:#dbeafe;border-radius:4px}
+.resume-summary{font-size:14px;line-height:1.5;color:#475569}
+.resume-item{margin-bottom:8px}
 .resume-item-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px}
 .resume-item-title{font-size:15px;font-weight:700;color:#1e293b}
 .resume-item-date{font-size:12px;color:#94a3b8;font-weight:600;white-space:nowrap}
 .resume-item-sub{font-size:13px;font-weight:600;margin-bottom:4px;color:var(--accent)}
-.resume-item-desc{font-size:13px;line-height:1.6;color:#374151}
+.resume-item-desc{font-size:13px;line-height:1.5;color:#374151}
 .resume-item-desc ul{padding-left:18px}
-.resume-item-desc li{margin-bottom:2px}
+.resume-item-desc li{margin-bottom:0}
 .resume-skills{display:flex;flex-wrap:wrap;gap:8px}
-.resume-skill-tag{padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid;background:var(--accent-light);color:var(--accent-text);border-color:var(--accent-border)}
+.resume-skill-tag{padding:4px 13px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid;background:var(--accent-light);color:var(--accent-text);border-color:var(--accent-border)}
+/* 技能分组横排：组名占固定宽度做左列，标签在右列 —— 比原来的上下两行省一半高度 */
+.skill-group{display:flex;align-items:flex-start;gap:14px;margin-bottom:5px}
+.skill-group:last-child{margin-bottom:0}
+.skill-group-name{flex:0 0 86px;font-size:13px;font-weight:700;color:#1e293b;line-height:25px}
+.skill-group .resume-skills{flex:1;gap:6px}
 .resume-paper.layout-sidebar .resume-body{display:grid;grid-template-columns:200px 1fr;gap:0;padding:0}
 .resume-paper.layout-sidebar .resume-sidebar-col{background:#f8fafc;padding:28px 20px;border-right:1px solid #e2e8f0}
 .resume-paper.layout-sidebar .resume-main-col{padding:28px 32px}
 .resume-paper.layout-sidebar .resume-section-title{font-size:13px;letter-spacing:1.5px}
 .resume-paper.layout-sidebar .resume-skill-tag{font-size:11px;padding:4px 10px}
+.resume-paper.layout-sidebar .skill-group-name{font-size:11px;flex-basis:66px;line-height:24px}
+.resume-paper.layout-sidebar .skill-group{gap:8px;margin-bottom:5px}
+.resume-paper.layout-sidebar .resume-skills{gap:5px}
 .resume-paper.layout-sidebar .resume-item-header{flex-direction:column;gap:2px}
 .resume-paper.layout-sidebar .resume-item-date{font-size:11px}
 .resume-paper.layout-sidebar .resume-item-title{font-size:13px}
 .resume-paper.layout-sidebar .resume-item-sub{font-size:12px}
-.resume-paper.layout-sidebar .resume-item-desc{font-size:12px;line-height:1.5}
+.resume-paper.layout-sidebar .resume-item-desc{font-size:12px;line-height:1.6}
+.resume-paper.layout-sidebar .resume-contact{padding:0 32px}
 /* 多简历管理面板 */
-.resume-manager{background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px}
-.resume-manager-title{font-size:13px;font-weight:700;color:var(--text-light);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;justify-content:space-between}
-.resume-manager-title button{font-size:11px;padding:4px 10px;border:none;border-radius:6px;background:var(--primary);color:#fff;cursor:pointer;font-weight:600}
-.resume-manager-title button:hover{background:var(--primary-dark)}
+.resume-manager-title{justify-content:space-between}
+.resume-manager-title .t{flex:1}
+.resume-manager-title button{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;font-family:inherit;padding:5px 10px;border:1px solid var(--brand-line);border-radius:var(--r-sm);background:var(--brand-soft);color:var(--brand);cursor:pointer;transition:all .16s}
+.resume-manager-title button .i{width:12px;height:12px}
+.resume-manager-title button:hover{background:var(--brand);border-color:var(--brand);color:#fff}
+.resume-manager-title button:hover .i{color:#fff}
 .resume-list{max-height:200px;overflow-y:auto}
-.resume-list-item{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:6px;cursor:pointer;transition:all .15s;margin-bottom:4px;border:1px solid transparent}
-.resume-list-item:hover{background:#eff6ff}
-.resume-list-item.active{background:var(--accent-light);border-color:var(--accent-border)}
-.resume-list-item .ri-name{font-size:13px;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.resume-list-item .ri-date{font-size:11px;color:var(--text-light);margin:0 8px;white-space:nowrap}
-.resume-list-item .ri-actions{display:flex;gap:4px}
-.resume-list-item .ri-actions button{font-size:10px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer;color:var(--text-light);transition:all .15s}
-.resume-list-item .ri-actions button:hover{background:var(--primary);color:#fff;border-color:var(--primary)}
-.resume-list-item .ri-actions button.ri-del:hover{background:#dc2626;border-color:#dc2626}
-.resume-list-empty{font-size:12px;color:var(--text-light);text-align:center;padding:12px}
-.toast{position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:1000;transform:translateY(80px);opacity:0;transition:all .3s ease}
+.resume-list-item{display:flex;align-items:center;justify-content:space-between;padding:7px 9px;border-radius:var(--r-sm);cursor:pointer;transition:all .15s;margin-bottom:3px;border:1px solid transparent}
+.resume-list-item:hover{background:#f6f9ff}
+.resume-list-item.active{background:var(--brand-soft);border-color:var(--brand-line)}
+.resume-list-item .ri-name{font-size:12.5px;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.resume-list-item .ri-date{font-size:11px;color:var(--text-3);margin:0 8px;white-space:nowrap}
+.resume-list-item .ri-actions{display:flex;gap:3px;opacity:0;transition:opacity .15s}
+.resume-list-item:hover .ri-actions,.resume-list-item.active .ri-actions{opacity:1}
+.resume-list-item .ri-actions button{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;color:var(--text-3);transition:all .15s}
+.resume-list-item .ri-actions button .i{width:13px;height:13px}
+.resume-list-item .ri-actions button:hover{background:var(--brand);color:#fff;border-color:var(--brand)}
+.resume-list-item .ri-actions button:hover .i{color:#fff}
+.resume-list-item .ri-actions button.ri-del:hover{background:var(--danger);border-color:var(--danger)}
+.resume-list-empty{font-size:12px;color:var(--text-3);text-align:center;padding:14px;line-height:1.6}
+/* 提示条：原来不管成功失败都是一块黑底，现在按结果上色 + 配图标 */
+.toast{position:fixed;bottom:24px;right:24px;display:flex;align-items:center;gap:9px;background:#172033;color:#fff;padding:11px 16px;border-radius:var(--r);font-size:13.5px;font-weight:500;box-shadow:0 12px 32px rgba(16,24,40,.28);z-index:1000;transform:translateY(80px);opacity:0;transition:all .28s cubic-bezier(.2,.8,.3,1);max-width:420px;border:1px solid rgba(255,255,255,.08)}
 .toast.show{transform:translateY(0);opacity:1}
-.loading-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:999}
+.toast .i{width:16px;height:16px}
+.toast.ok .i{color:#4ade9b}
+.toast.warn .i{color:#f6bf6b}
+.loading-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;z-index:999}
 .loading-overlay.show{display:flex}
-.loading-box{background:#fff;padding:32px 40px;border-radius:12px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3)}
-.spinner{width:40px;height:40px;border:4px solid #e2e8f0;border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+.loading-box{background:#fff;padding:28px 36px;border-radius:var(--r-lg);text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.28);font-size:13.5px;font-weight:600;color:var(--text-2)}
+.spinner{width:36px;height:36px;border:3px solid #e6ebf3;border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px}
 @keyframes spin{to{transform:rotate(360deg)}}
-@media print{body{background:#fff}.sidebar,.toolbar,.loading-overlay,.toast{display:none!important}.preview-area{padding:0}.resume-paper{box-shadow:none;width:100%}}
-@media(max-width:900px){.app{flex-direction:column}.sidebar{width:100%;min-width:unset;height:auto;position:static}.preview-area{padding:16px}.resume-paper{width:100%}}
+/* 头像裁剪弹层：固定圆形取景框 + 拖动/缩放图片，见 openCropper() */
+.crop-overlay{position:fixed;inset:0;background:rgba(15,23,42,.72);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;z-index:1001;padding:20px}
+.crop-overlay.show{display:flex}
+.crop-panel{background:#fff;border-radius:var(--r-lg);padding:20px;box-shadow:0 24px 60px rgba(0,0,0,.4);width:360px;max-width:100%}
+.crop-panel h3{font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px}
+.crop-tip{font-size:12px;color:var(--text-3);margin-bottom:12px}
+.crop-stage{position:relative;width:320px;height:320px;max-width:100%;margin:0 auto;overflow:hidden;border-radius:var(--r);background:#0f172a;cursor:grab;touch-action:none;user-select:none}
+.crop-stage.dragging{cursor:grabbing}
+.crop-stage img{position:absolute;left:0;top:0;transform-origin:0 0;pointer-events:none;-webkit-user-drag:none}
+/* 取景圈用超大 box-shadow 压暗圈外：圈内保持原亮度，比"盖一层半透明蒙版再挖洞"
+   更简单，也不会在圆边上留缝 */
+.crop-ring{position:absolute;left:50%;top:50%;width:240px;height:240px;margin:-120px 0 0 -120px;border-radius:50%;box-shadow:0 0 0 9999px rgba(15,23,42,.6);border:2px solid rgba(255,255,255,.9);pointer-events:none}
+.crop-zoom{display:flex;align-items:center;gap:10px;margin:14px 0 4px}
+.crop-zoom span{font-size:12px;color:var(--text-3);white-space:nowrap}
+.crop-zoom input[type=range]{flex:1;accent-color:var(--brand)}
+.crop-actions{display:flex;gap:10px;margin-top:16px}
+.crop-actions button{flex:1;padding:10px;border:1px solid transparent;border-radius:var(--r-sm);font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .18s}
+.crop-actions .crop-cancel{background:#f4f6fa;color:var(--text-2)}
+.crop-actions .crop-cancel:hover{background:#eaeef5;color:var(--text)}
+.crop-actions .crop-ok{background:var(--brand);color:#fff}
+.crop-actions .crop-ok:hover{background:var(--brand-dark)}
+@keyframes toastIn{from{transform:translateY(80px);opacity:0}to{transform:translateY(0);opacity:1}}
+@media print{body{background:#fff}.sidebar,.toolbar,.loading-overlay,.toast,.crop-overlay{display:none!important}.preview-area{padding:0;background-image:none}.resume-paper{box-shadow:none;width:100%}}
+@media(max-width:900px){.app{flex-direction:column}.sidebar{width:100%;min-width:unset;height:auto;position:static}.preview-area{padding:16px}.resume-paper{width:100%}.toolbar{max-width:100%}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
+<!-- ===== SVG 图标库 =====
+     界面上的图标都出自这里，写法是 <svg class="i"><use href="#i-xxx"/></svg>。
+     集中定义的好处是描边粗细、圆角端点只写一次，改一处全都跟着变。 -->
+<svg class="svg-sprite" aria-hidden="true" focusable="false"><defs>
+<symbol id="i-doc" viewBox="0 0 24 24"><path d="M14.5 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6.5z"/><path d="M14 2v4.5h4.5"/><path d="M9 12.5h6"/><path d="M9 16.5h4"/></symbol>
+<symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+<symbol id="i-briefcase" viewBox="0 0 24 24"><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect x="2" y="6" width="20" height="14" rx="2"/></symbol>
+<symbol id="i-grad" viewBox="0 0 24 24"><path d="M22 10 12 5 2 10l10 5z"/><path d="M6 12.2V17c0 1.7 2.7 3 6 3s6-1.3 6-3v-4.8"/></symbol>
+<symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></symbol>
+<symbol id="i-rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></symbol>
+<symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M19 14.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/><path d="M18 3.5v3"/><path d="M19.5 5h-3"/></symbol>
+<symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3.5 6h.01"/><path d="M3.5 12h.01"/><path d="M3.5 18h.01"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 2.5 21.5 7 12 11.5 2.5 7z"/><path d="m2.5 12 9.5 4.5L21.5 12"/><path d="m2.5 17 9.5 4.5L21.5 17"/></symbol>
+<symbol id="i-swatches" viewBox="0 0 24 24"><rect x="2.5" y="2.5" width="8.5" height="8.5" rx="2"/><rect x="13" y="2.5" width="8.5" height="8.5" rx="2"/><rect x="2.5" y="13" width="8.5" height="8.5" rx="2"/><circle cx="17.25" cy="17.25" r="4.25"/></symbol>
+<symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.2"/></symbol>
+<symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+<symbol id="i-export" viewBox="0 0 24 24"><path d="M12 15V3"/><path d="m6 9 6 6 6-6"/><path d="M19 21H5"/></symbol>
+<symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 8 5-5 5 5"/><path d="M12 3v12"/></symbol>
+<symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="8" rx="1.5"/></symbol>
+<symbol id="i-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h7"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
+<symbol id="i-pencil" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+<symbol id="i-check-circle" viewBox="0 0 24 24"><path d="M21.8 10A10 10 0 1 1 17 3.34"/><path d="m9 11 3 3L22 4"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+<symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+<symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="m19 12-7 7-7-7"/><path d="M12 5v14"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+<symbol id="i-hdd" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6.5 6.5h.01"/><path d="M6.5 17.5h.01"/></symbol>
+</defs></svg>
 <div class="app">
   <div class="sidebar">
     <div class="sidebar-header">
-      <h1>📄 简历生成器 Pro</h1>
-      <p>填写信息 → 实时预览 → 一键导出</p>
+      <div class="brand-mark"><svg class="i"><use href="#i-doc"/></svg></div>
+      <div class="brand-text">
+        <h1>简历生成器<span class="pro">PRO</span></h1>
+        <p>填写信息 → 实时预览 → 一键导出</p>
+      </div>
     </div>
     <div class="sidebar-body">
       <!-- 多简历管理面板 -->
       <div class="resume-manager">
-        <div class="resume-manager-title">📋 简历管理 <button onclick="createNewResume()">+ 新建简历</button></div>
+        <div class="resume-manager-title">
+          <svg class="i"><use href="#i-list"/></svg><span class="t">简历管理</span>
+          <button onclick="createNewResume()"><svg class="i"><use href="#i-plus"/></svg>新建简历</button>
+        </div>
         <div class="resume-list" id="resumeList"></div>
       </div>
       <div class="photo-upload">
-        <div class="photo-preview" id="photoPreview" onclick="$('photoInput').click()"><span class="placeholder">📷</span></div>
+        <div class="photo-preview" id="photoPreview" onclick="$('photoInput').click()"><span class="placeholder"><svg class="i"><use href="#i-camera"/></svg></span></div>
         <div class="photo-info">
           <p>上传头像（可选）</p>
-          <button class="photo-btn-upload" onclick="$('photoInput').click()">选择图片</button>
-          <button class="photo-btn-remove" onclick="removePhoto()" id="photoRemoveBtn" style="display:none">移除</button>
+          <button class="photo-btn-upload" onclick="$('photoInput').click()"><svg class="i"><use href="#i-image"/></svg>选择图片</button>
+          <button class="photo-btn-remove" onclick="removePhoto()" id="photoRemoveBtn" style="display:none"><svg class="i"><use href="#i-trash"/></svg>移除</button>
           <input type="file" id="photoInput" accept="image/*" style="display:none" onchange="handlePhoto(this)">
         </div>
       </div>
       <div class="theme-panel">
-        <div class="theme-panel-title">🎨 主题配色</div>
+        <div class="theme-panel-title"><svg class="i"><use href="#i-swatches"/></svg>主题配色</div>
         <div class="preset-themes">
-          <button class="preset-btn active" data-theme='{"from":"#1e3a5f","to":"#0ea5e9","accent":"#2563eb","light":"#dbeafe","border":"#bfdbfe","text":"#1e40af"}' data-label="海洋蓝" onclick="setPreset(this)" style="background:linear-gradient(135deg,#1e3a5f,#0ea5e9)"></button>
-          <button class="preset-btn" data-theme='{"from":"#064e3b","to":"#34d399","accent":"#059669","light":"#d1fae5","border":"#a7f3d0","text":"#065f46"}' data-label="翡翠绿" onclick="setPreset(this)" style="background:linear-gradient(135deg,#064e3b,#34d399)"></button>
-          <button class="preset-btn" data-theme='{"from":"#4c1d95","to":"#a78bfa","accent":"#7c3aed","light":"#ede9fe","border":"#c4b5fd","text":"#5b21b6"}' data-label="星空紫" onclick="setPreset(this)" style="background:linear-gradient(135deg,#4c1d95,#a78bfa)"></button>
-          <button class="preset-btn" data-theme='{"from":"#7c2d12","to":"#fb923c","accent":"#ea580c","light":"#ffedd5","border":"#fed7aa","text":"#9a3412"}' data-label="日落橙" onclick="setPreset(this)" style="background:linear-gradient(135deg,#7c2d12,#fb923c)"></button>
-          <button class="preset-btn" data-theme='{"from":"#881337","to":"#fb7185","accent":"#e11d48","light":"#ffe4e6","border":"#fecdd3","text":"#9f1239"}' data-label="玫瑰红" onclick="setPreset(this)" style="background:linear-gradient(135deg,#881337,#fb7185)"></button>
-          <button class="preset-btn" data-theme='{"from":"#111827","to":"#6b7280","accent":"#374151","light":"#f3f4f6","border":"#d1d5db","text":"#1f2937"}' data-label="商务灰" onclick="setPreset(this)" style="background:linear-gradient(135deg,#111827,#6b7280)"></button>
-          <button class="preset-btn" data-theme='{"from":"#92400e","to":"#fbbf24","accent":"#d97706","light":"#fef3c7","border":"#fde68a","text":"#78350f"}' data-label="琥珀金" onclick="setPreset(this)" style="background:linear-gradient(135deg,#92400e,#fbbf24)"></button>
-          <button class="preset-btn" data-theme='{"from":"#134e4a","to":"#5eead4","accent":"#14b8a6","light":"#ccfbf1","border":"#99f6e4","text":"#115e59"}' data-label="青碧" onclick="setPreset(this)" style="background:linear-gradient(135deg,#134e4a,#5eead4)"></button>
+          <button class="preset-btn active" data-theme='{"from":"#1e3a5f","to":"#0ea5e9","accent":"#2563eb","light":"#dbeafe","border":"#bfdbfe","text":"#1e40af"}' data-label="海洋蓝" onclick="setPreset(this)" style="background:linear-gradient(135deg,#1e3a5f,#0ea5e9)"><svg class="i tick"><use href="#i-check"/></svg></button>
+          <button class="preset-btn" data-theme='{"from":"#064e3b","to":"#34d399","accent":"#059669","light":"#d1fae5","border":"#a7f3d0","text":"#065f46"}' data-label="翡翠绿" onclick="setPreset(this)" style="background:linear-gradient(135deg,#064e3b,#34d399)"><svg class="i tick"><use href="#i-check"/></svg></button>
+          <button class="preset-btn" data-theme='{"from":"#4c1d95","to":"#a78bfa","accent":"#7c3aed","light":"#ede9fe","border":"#c4b5fd","text":"#5b21b6"}' data-label="星空紫" onclick="setPreset(this)" style="background:linear-gradient(135deg,#4c1d95,#a78bfa)"><svg class="i tick"><use href="#i-check"/></svg></button>
+          <button class="preset-btn" data-theme='{"from":"#7c2d12","to":"#fb923c","accent":"#ea580c","light":"#ffedd5","border":"#fed7aa","text":"#9a3412"}' data-label="日落橙" onclick="setPreset(this)" style="background:linear-gradient(135deg,#7c2d12,#fb923c)"><svg class="i tick"><use href="#i-check"/></svg></button>
+          <button class="preset-btn" data-theme='{"from":"#881337","to":"#fb7185","accent":"#e11d48","light":"#ffe4e6","border":"#fecdd3","text":"#9f1239"}' data-label="玫瑰红" onclick="setPreset(this)" style="background:linear-gradient(135deg,#881337,#fb7185)"><svg class="i tick"><use href="#i-check"/></svg></button>
+          <button class="preset-btn" data-theme='{"from":"#111827","to":"#6b7280","accent":"#374151","light":"#f3f4f6","border":"#d1d5db","text":"#1f2937"}' data-label="商务灰" onclick="setPreset(this)" style="background:linear-gradient(135deg,#111827,#6b7280)"><svg class="i tick"><use href="#i-check"/></svg></button>
+          <button class="preset-btn" data-theme='{"from":"#92400e","to":"#fbbf24","accent":"#d97706","light":"#fef3c7","border":"#fde68a","text":"#78350f"}' data-label="琥珀金" onclick="setPreset(this)" style="background:linear-gradient(135deg,#92400e,#fbbf24)"><svg class="i tick"><use href="#i-check"/></svg></button>
+          <button class="preset-btn" data-theme='{"from":"#134e4a","to":"#5eead4","accent":"#14b8a6","light":"#ccfbf1","border":"#99f6e4","text":"#115e59"}' data-label="青碧" onclick="setPreset(this)" style="background:linear-gradient(135deg,#134e4a,#5eead4)"><svg class="i tick"><use href="#i-check"/></svg></button>
         </div>
         <div class="custom-colors">
           <div class="color-field"><label>渐变起</label><input type="color" id="colorFrom" value="#1e3a5f" oninput="applyCustomColor()"></div>
@@ -190,48 +380,91 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <div class="options-row">
         <div class="opt-group"><label>布局</label><select id="optLayout" onchange="render();scheduleSave()"><option value="classic">经典（上下）</option><option value="sidebar">侧边栏（左右）</option></select></div>
         <div class="opt-group"><label>字体</label><select id="optFont" onchange="render();scheduleSave()"><option value="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">黑体</option><option value="'Noto Serif SC','SimSun','STSong',serif">宋体</option><option value="'KaiTi','STKaiti',serif">楷体</option><option value="Georgia,'Times New Roman',serif">英文衬线</option><option value="'Segoe UI',Roboto,sans-serif">英文无衬线</option></select></div>
-        <div class="opt-group"><label>字号 <span id="fontSizeVal">14px</span></label><input type="range" id="optFontSize" min="12" max="16" value="14" oninput="$('fontSizeVal').textContent=this.value+'px';render()"></div>
+        <div class="opt-group wide"><label>正文字号 <span class="val" id="fontSizeVal">14px</span></label><input type="range" id="optFontSize" min="12" max="16" value="14" oninput="$('fontSizeVal').textContent=this.value+'px';render()"></div>
       </div>
       <div class="section-order">
-        <div class="section-order-title">📑 模块顺序（拖拽或按钮调整）</div>
+        <div class="section-order-title"><svg class="i"><use href="#i-layers"/></svg>模块顺序<span class="count">拖拽或点箭头</span></div>
         <div class="order-list" id="sectionOrder"></div>
       </div>
       <div class="section">
-        <div class="section-title">👤 基本信息</div>
+        <div class="section-title"><svg class="i"><use href="#i-user"/></svg>基本信息</div>
         <div class="field"><label>姓名</label><input id="name" placeholder="张三" oninput="debouncedRender()"></div>
         <div class="field"><label>求职意向</label><input id="jobTitle" placeholder="高级前端工程师" oninput="debouncedRender()"></div>
         <div class="row"><div class="field"><label>手机</label><input id="phone" placeholder="138-0000-0000" oninput="debouncedRender()"></div><div class="field"><label>邮箱</label><input id="email" placeholder="zhangsan@email.com" oninput="debouncedRender()"></div></div>
         <div class="row"><div class="field"><label>所在城市</label><input id="city" placeholder="北京" oninput="debouncedRender()"></div><div class="field"><label>出生年月</label><input id="website" placeholder="2001.12" oninput="debouncedRender()"></div></div>
       </div>
-      <div class="section"><div class="section-title">📝 个人简介</div><div class="field"><textarea id="summary" rows="3" placeholder="8年前端开发经验..." oninput="debouncedRender()"></textarea></div></div>
-      <div class="section"><div class="section-title">💼 工作经历</div><div id="experience-list"></div><button class="add-btn" onclick="addExperience()">+ 添加工作经历</button></div>
-      <div class="section"><div class="section-title">🎓 教育背景</div><div id="education-list"></div><button class="add-btn" onclick="addEducation()">+ 添加教育经历</button></div>
-      <div class="section"><div class="section-title">🛠️ 专业技能</div><div class="field"><input id="skills" placeholder="React, Vue, TypeScript（逗号分隔）" oninput="debouncedRender()"></div></div>
-      <div class="section"><div class="section-title">🚀 项目经验</div><div id="project-list"></div><button class="add-btn" onclick="addProject()">+ 添加项目</button></div>
-      <div class="section"><div class="section-title">✨ 自定义栏目</div><div id="custom-list"></div><button class="add-btn" onclick="addCustomSection()">+ 添加自定义栏目</button></div>
+      <div class="section" data-sec="summary"><div class="section-title"><svg class="i"><use href="#i-doc"/></svg>个人简介</div><div class="field"><textarea id="summary" rows="3" placeholder="8年前端开发经验..." oninput="debouncedRender()"></textarea></div></div>
+      <div class="section" data-sec="experience"><div class="section-title"><svg class="i"><use href="#i-briefcase"/></svg>工作经历</div><div id="experience-list"></div><button class="add-btn" onclick="addExperience()"><svg class="i"><use href="#i-plus"/></svg>添加工作经历</button></div>
+      <div class="section" data-sec="education"><div class="section-title"><svg class="i"><use href="#i-grad"/></svg>教育背景</div><div id="education-list"></div><button class="add-btn" onclick="addEducation()"><svg class="i"><use href="#i-plus"/></svg>添加教育经历</button></div>
+      <div class="section" data-sec="skills"><div class="section-title"><svg class="i"><use href="#i-wrench"/></svg>专业技能</div><div class="field"><textarea id="skills" rows="4" placeholder="写法一（单行，逗号分隔）：&#10;Python, MySQL, Postman&#10;&#10;写法二（多行分组，每组一行）：&#10;测试框架：Hypium、pytest&#10;数据库：MySQL" oninput="debouncedRender()"></textarea></div></div>
+      <div class="section" data-sec="projects"><div class="section-title"><svg class="i"><use href="#i-rocket"/></svg>项目经验</div><div id="project-list"></div><button class="add-btn" onclick="addProject()"><svg class="i"><use href="#i-plus"/></svg>添加项目经验</button></div>
+      <div class="section"><div class="section-title"><svg class="i"><use href="#i-sparkles"/></svg>自定义栏目</div><div id="custom-list"></div><button class="add-btn" onclick="addCustomSection()"><svg class="i"><use href="#i-plus"/></svg>添加自定义栏目</button></div>
     </div>
-    <div class="sidebar-footer">数据自动保存在浏览器本地 · 刷新不丢失 · 最多保存10份简历</div>
+    <div class="sidebar-footer">数据自动保存在浏览器本地 · 刷新不丢失 · 最多保存 10 份简历</div>
   </div>
   <div class="preview-area">
     <div class="toolbar">
-      <button class="btn-pdf" onclick="exportPDF()">📥 导出 PDF</button>
-      <button class="btn-jpg" onclick="exportJPG()">🖼️ 导出 JPG</button>
-      <button class="btn-print" onclick="window.print()">🖨️ 打印</button>
-      <button class="btn-save" onclick="saveCurrentResume()">💾 保存</button>
-      <button class="btn-sample" onclick="loadSample()">🔄 示例</button>
-      <button class="btn-reset" onclick="clearAll()">🗑️ 清空</button>
+      <div class="tb-group">
+        <button class="btn btn-primary" onclick="exportPDF()"><svg class="i"><use href="#i-download"/></svg>导出 PDF</button>
+        <button class="btn" onclick="exportJPG()"><svg class="i"><use href="#i-image"/></svg>导出 JPG</button>
+        <button class="btn" onclick="window.print()"><svg class="i"><use href="#i-printer"/></svg>打印</button>
+      </div>
+      <p id="jsonHint" class="hint"></p>
+      <div class="tb-group tb-more" id="tbMore">
+        <button class="btn" onclick="saveCurrentResume()" title="在浏览器本地存一份，之后可以从左侧「简历管理」切回来"><svg class="i"><use href="#i-hdd"/></svg>保存到浏览器</button>
+        <button class="btn" onclick="pickJsonFile()" title="从磁盘上挑一个 .json 简历文件载入当前页面"><svg class="i"><use href="#i-upload"/></svg>导入 JSON 简历</button>
+        <button class="btn btn-write" id="btnWrite" onclick="writeResumeJson()" title="写入当前设定的 JSON 文件（点之前会先确认一次）"><svg class="i"><use href="#i-save"/></svg><span id="btnWriteLabel">写入 JSON 文件</span><span class="dot"></span></button>
+        <button class="btn" id="tbMoreBtn" onclick="toggleMoreMenu(event)" title="低频操作与危险操作都在这里">
+          <span>更多</span><svg class="i caret"><use href="#i-arrow-down"/></svg>
+        </button>
+        <div class="tb-menu" id="tbMenu">
+          <button onclick="menuAct(setWriteTarget)" title="挑一个 json 文件当写入目标，之后点「写入 JSON 文件」都写到它"><svg class="i"><use href="#i-folder"/></svg>设置写入的 JSON 文件…</button>
+          <div class="mi-info" id="writeTargetInfo">写入目标：未选择</div>
+          <button onclick="menuAct(exportJson)" title="把当前内容下载成一个 .json 文件"><svg class="i"><use href="#i-export"/></svg>导出 JSON 简历</button>
+          <hr>
+          <button onclick="menuAct(loadSample)" title="载入一份假数据用来看排版，会覆盖当前内容"><svg class="i"><use href="#i-refresh"/></svg>加载示例数据<span class="mi-note">会覆盖</span></button>
+          <button class="danger" onclick="menuAct(clearAll)" title="清空表单内容（浏览器里存的那几份不受影响）"><svg class="i"><use href="#i-trash"/></svg>清空当前表单</button>
+          <hr>
+          <label class="mi" title="页面通过 http 打开时，一进来就自动读取同目录的 JSON 文件">
+            <svg class="i"><use href="#i-clock"/></svg>启动时自动读取 JSON
+            <input type="checkbox" id="optAutoJson" onchange="setAutoJson(this.checked)">
+          </label>
+        </div>
+      </div>
     </div>
+    <input type="file" id="jsonInput" accept=".json,application/json" style="display:none" onchange="handleJsonInput(this)">
     <div class="resume-paper" id="resume"></div>
   </div>
 </div>
 <div class="loading-overlay" id="loading"><div class="loading-box"><div class="spinner"></div><div>正在生成...</div></div></div>
 <div class="toast" id="toast"></div>
+<div class="crop-overlay" id="cropOverlay">
+  <div class="crop-panel">
+    <h3>调整头像</h3>
+    <div class="crop-tip">拖动图片移动位置，滚轮或下面的滑块缩放</div>
+    <div class="crop-stage" id="cropStage">
+      <img id="cropImg" alt="">
+      <div class="crop-ring"></div>
+    </div>
+    <div class="crop-zoom">
+      <span>缩放</span>
+      <input type="range" id="cropZoom" min="1" max="4" step="0.01" value="1">
+    </div>
+    <div class="crop-actions">
+      <button class="crop-cancel" onclick="closeCropper(false)">取消</button>
+      <button class="crop-ok" onclick="closeCropper(true)">确定</button>
+    </div>
+  </div>
+</div>
 
 <script>
 /* ===== 多简历管理 ===== */
 const RESUME_INDEX_KEY='resume_pro_resumes';
 const RESUME_PREFIX='resume_pro_resume_';
 const MAX_RESUMES=10;
+/* 草稿：表单的最近状态。自动读取 resume.json 后 currentResumeId 是 null，
+   没有这个键，表单里改的东西一刷新就没了 */
+const DRAFT_KEY='resume_pro_draft';
 let currentResumeId=null;
 
 function getResumeIndex(){
@@ -246,7 +479,10 @@ function buildResumeData(){
     name:val('name'),jobTitle:val('jobTitle'),phone:val('phone'),email:val('email'),
     city:val('city'),website:val('website'),summary:val('summary'),skills:val('skills'),
     exps:state_exps(),edus:state_edus(),projs:state_projs(),customs:state_customs(),
-    theme:currentTheme,sectionOrder:[...sectionOrder],font:val('optFont'),fontSize:val('optFontSize'),
+    /* fontSize 必须转成数字：滑块 DOM 的 value 是字符串，直接吐出去会让
+       resume.json 里这个字段在 14 和 "14" 之间来回变 */
+    theme:currentTheme,sectionOrder:[...sectionOrder],font:val('optFont'),
+    fontSize:Number(val('optFontSize'))||14,
     layout:val('optLayout'),photo:photoDataUrl
   };
 }
@@ -262,8 +498,8 @@ function applyResumeData(d){
   if(d.font)$('optFont').value=d.font;
   if(d.fontSize)$('optFontSize').value=d.fontSize;
   if(d.layout)$('optLayout').value=d.layout;
-  if(d.photo){photoDataUrl=d.photo;$('photoPreview').innerHTML='<img src="'+photoDataUrl+'">';$('photoRemoveBtn').style.display=''}
-  else{photoDataUrl='';$('photoPreview').innerHTML='<span class="placeholder">📷</span>';$('photoRemoveBtn').style.display='none'}
+  if(d.photo){photoDataUrl=d.photo;$('photoPreview').innerHTML='<img src="'+photoDataUrl+'">';$('photoRemoveBtn').style.display='';persistPhoto(d.photo)}
+  else{photoDataUrl='';$('photoPreview').innerHTML=PH_PLACEHOLDER;$('photoRemoveBtn').style.display='none'}
   $('experience-list').innerHTML='';$('education-list').innerHTML='';$('project-list').innerHTML='';$('custom-list').innerHTML='';
   state_exp=[];state_edu=[];state_proj=[];state_custom=[];
   expCount=0;eduCount=0;projCount=0;customCount=0;
@@ -286,8 +522,8 @@ function renderResumeList(){
       +'<span class="ri-name">'+esc(r.name||'未命名简历')+'</span>'
       +'<span class="ri-date">'+dateStr+'</span>'
       +'<span class="ri-actions">'
-      +'<button onclick="event.stopPropagation();renameResume(\''+r.id+'\')" title="重命名">✏️</button>'
-      +'<button class="ri-del" onclick="event.stopPropagation();deleteResume(\''+r.id+'\')" title="删除">🗑️</button>'
+      +'<button onclick="event.stopPropagation();renameResume(\''+r.id+'\')" title="重命名">'+uiIco('pencil')+'</button>'
+      +'<button class="ri-del" onclick="event.stopPropagation();deleteResume(\''+r.id+'\')" title="删除">'+uiIco('trash')+'</button>'
       +'</span></div>';
   }).join('');
 }
@@ -297,9 +533,10 @@ function createNewResume(){
   if(idx.length>=MAX_RESUMES){toast('⚠️ 最多保存'+MAX_RESUMES+'份简历');return}
   const id=genId();
   const data=buildResumeData();
-  data.name='新简历';
-  localStorage.setItem(RESUME_PREFIX+id,JSON.stringify(data));
-  idx.unshift({id:id,name:'新简历',createdAt:Date.now(),updatedAt:Date.now()});
+  const listName=data.name||'新简历';
+  data.name=listName;
+  localStorage.setItem(RESUME_PREFIX+id,JSON.stringify(textOnly(data)));
+  idx.unshift({id:id,name:listName,createdAt:Date.now(),updatedAt:Date.now()});
   saveResumeIndex(idx);
   currentResumeId=id;
   renderResumeList();
@@ -312,6 +549,7 @@ function switchResume(id){
   if(!raw)return;
   currentResumeId=id;
   applyResumeData(JSON.parse(raw));
+  restorePhoto();      /* 记录里已经没有头像了，从 IndexedDB 取回来 */
   renderResumeList();
 }
 
@@ -323,7 +561,7 @@ function deleteResume(id){
   localStorage.removeItem(RESUME_PREFIX+id);
   if(currentResumeId===id){
     currentResumeId=idx.length>0?idx[0].id:null;
-    if(currentResumeId){const raw=localStorage.getItem(RESUME_PREFIX+currentResumeId);if(raw)applyResumeData(JSON.parse(raw))}
+    if(currentResumeId){const raw=localStorage.getItem(RESUME_PREFIX+currentResumeId);if(raw){applyResumeData(JSON.parse(raw));restorePhoto()}}
     else{clearForm();render()}
   }
   renderResumeList();
@@ -341,7 +579,7 @@ function renameResume(id){
   saveResumeIndex(idx);
   if(id===currentResumeId){
     const raw=localStorage.getItem(RESUME_PREFIX+id);
-    if(raw){const d=JSON.parse(raw);d.name=item.name;localStorage.setItem(RESUME_PREFIX+id,JSON.stringify(d))}
+    if(raw){const d=JSON.parse(raw);d.name=item.name;d.photo='';localStorage.setItem(RESUME_PREFIX+id,JSON.stringify(d))}
   }
   renderResumeList();
   toast('✅ 已重命名');
@@ -357,7 +595,7 @@ function saveCurrentResume(){
     item.updatedAt=Date.now();
     saveResumeIndex(idx);
   }
-  localStorage.setItem(RESUME_PREFIX+currentResumeId,JSON.stringify(data));
+  localStorage.setItem(RESUME_PREFIX+currentResumeId,JSON.stringify(textOnly(data)));
   renderResumeList();
   toast('✅ 已保存');
 }
@@ -369,18 +607,53 @@ function clearForm(){
   state_exp=[];state_edu=[];state_proj=[];state_custom=[];
   expCount=0;eduCount=0;projCount=0;customCount=0;
   sectionOrder=['summary','experience','education','skills','projects'];
-  photoDataUrl='';$('photoPreview').innerHTML='<span class="placeholder">📷</span>';$('photoRemoveBtn').style.display='none';
+  photoDataUrl='';$('photoPreview').innerHTML=PH_PLACEHOLDER;$('photoRemoveBtn').style.display='none';
   currentTheme={from:'#1e3a5f',to:'#0ea5e9',accent:'#2563eb',light:'#dbeafe',border:'#bfdbfe',text:'#1e40af'};
   applyThemeToInputs();rebuildOrderChips();
 }
 
+/* 原来第一行是 if(!currentResumeId)return —— 而自动读取 resume.json 之后
+   currentResumeId 就是 null，等于表单里的改动一个字都不存。现在无论有没有
+   条目都先写一份草稿，currentResumeId 存在时再额外更新那个条目。 */
+let autoSaveWarned=false;
 function autoSave(){
-  if(!currentResumeId)return;
   const data=buildResumeData();
-  const idx=getResumeIndex();
-  const item=idx.find(r=>r.id===currentResumeId);
-  if(item){item.name=data.name||item.name;item.updatedAt=Date.now();saveResumeIndex(idx)}
-  localStorage.setItem(RESUME_PREFIX+currentResumeId,JSON.stringify(data));
+  persistPhoto(data.photo);                 /* 头像单独进 IndexedDB */
+  const s=JSON.stringify(textOnly(data));   /* localStorage 只留纯文本 */
+  /* 写 localStorage 一律兜住：万一还是超了配额，setItem 抛的 QuotaExceededError
+     会一路冒到 exportPDF 外面，而那个 async 函数的 rejection 没人接 ——
+     表现就是「点导出没反应」。这里吞掉并提示一次，保证导出流程照常走。 */
+  try{
+    localStorage.setItem(DRAFT_KEY,s);
+    if(currentResumeId){
+      const idx=getResumeIndex();
+      const item=idx.find(r=>r.id===currentResumeId);
+      if(item){item.name=data.name||item.name;item.updatedAt=Date.now();saveResumeIndex(idx)}
+      localStorage.setItem(RESUME_PREFIX+currentResumeId,s);
+    }
+  }catch(e){
+    if(!autoSaveWarned){
+      autoSaveWarned=true;
+      /* 别只提示「照片太大」——裁剪器输出的头像只有几十 KB，根本撑不爆 5MB，
+         真正吃配额的多半是历史遗留的大块数据。把账目列出来，别猜。 */
+      const kb=n=>(n/1024).toFixed(1)+' KB';
+      const rows=[];let total=0;
+      for(let i=0;i<localStorage.length;i++){
+        const k=localStorage.key(i);
+        /* localStorage 按 UTF-16 计费，1 个字符算 2 字节 */
+        const sz=((localStorage.getItem(k)||'').length+String(k).length)*2;
+        total+=sz;rows.push({'键':k,'占用':kb(sz),'字节':sz});
+      }
+      rows.sort((a,b)=>b['字节']-a['字节']);
+      console.table(rows);
+      alert('自动保存失败：'+e.name+'\n'+e.message+'\n\n'
+        +'总占用：'+kb(total)+' / 上限约 5120 KB\n'
+        +'本次要写：'+kb(JSON.stringify(data).length*2)+'\n\n'
+        +'占用最大的几个键：\n'+rows.slice(0,6).map(r=>'· '+r['键']+'  '+r['占用']).join('\n'));
+      setTimeout(()=>{autoSaveWarned=false},6000);
+    }
+  }
+  updateWriteBtn();
 }
 
 function migrateOldData(){
@@ -398,7 +671,8 @@ function migrateOldData(){
       theme:d.theme||currentTheme,sectionOrder:d.sectionOrder||['summary','experience','education','skills','projects'],
       font:d.font||'',fontSize:d.fontSize||14,layout:d.layout||'classic',photo:d.photo||''
     };
-    localStorage.setItem(RESUME_PREFIX+id,JSON.stringify(resumeData));
+    if(resumeData.photo)persistPhoto(resumeData.photo);   /* 老数据里的头像搬进 IndexedDB */
+    localStorage.setItem(RESUME_PREFIX+id,JSON.stringify(textOnly(resumeData)));
     idx.push({id:id,name:resumeData.name,createdAt:Date.now(),updatedAt:Date.now()});
     saveResumeIndex(idx);
     currentResumeId=id;
@@ -410,16 +684,119 @@ function migrateOldData(){
 let currentTheme={from:'#1e3a5f',to:'#0ea5e9',accent:'#2563eb',light:'#dbeafe',border:'#bfdbfe',text:'#1e40af'};
 let sectionOrder=['summary','experience','education','skills','projects'];
 let photoDataUrl='';
+
+/* ===== 头像存哪 =====
+   localStorage 上限 5MB，而且是按 UTF-16 一个字符算 2 字节计费的；一张原图
+   base64 之后就是 3MB 量级，存两三条记录就把配额吃光。配额一满，所有
+   setItem 都抛 QuotaExceededError，表现是「改动悄悄不保存、导出按钮没反应」，
+   而且报错信息会误导成是照片太大 —— 其实是历史遗留的大图占了坑。
+   所以头像一律不进 localStorage：localStorage 只放纯文本（整份简历才几 KB），
+   头像单独走 IndexedDB（配额几百 MB）。 */
+const PHOTO_IDB_KEY='photo';
+let photoSaved=null;      /* 已落盘的头像，用来跳过重复写 */
+
+/* 写 localStorage 前统一过一手，把头像摘掉 */
+function textOnly(d){return Object.assign({},d,{photo:''})}
+
+function persistPhoto(p){
+  if(p===photoSaved)return;
+  photoSaved=p;
+  idbSet(PHOTO_IDB_KEY,p||'').catch(()=>{});
+}
+
+/* 数据源里没带头像时（草稿和记录都已被摘空）从 IndexedDB 取回来，
+   这样只存文字也不影响刷新后头像还在 */
+async function restorePhoto(){
+  if(photoDataUrl)return;
+  try{
+    const p=await idbGet(PHOTO_IDB_KEY);
+    if(!p)return;
+    photoDataUrl=p;photoSaved=p;
+    $('photoPreview').innerHTML='<img src="'+p+'">';
+    $('photoRemoveBtn').style.display='';
+    render();
+  }catch(e){}
+}
+
+/* 一次性迁移：老版本把原图直接写进了 localStorage，单条记录能到 3.4MB。
+   这里逐条把头像摘出来（挑一张存进 IndexedDB 兜底），再原地重写记录。
+   重写后的值只会更小，所以即使配额此刻已经爆掉，这次 setItem 也能成功。 */
+async function migratePhotosOut(){
+  const FLAG='resume_pro_photo_moved_v1';
+  if(localStorage.getItem(FLAG))return;
+  const keys=[DRAFT_KEY,LAST_IMPORT_KEY,'resume_pro_data'];
+  getResumeIndex().forEach(r=>keys.push(RESUME_PREFIX+r.id));
+  let keep='';
+  for(const k of keys){
+    const raw=localStorage.getItem(k);
+    if(!raw)continue;
+    let d;try{d=JSON.parse(raw)}catch(e){continue}
+    if(!d||!d.photo)continue;
+    if(!keep)keep=d.photo;
+    d.photo='';
+    try{localStorage.setItem(k,JSON.stringify(d))}catch(e){}
+  }
+  if(keep){try{await idbSet(PHOTO_IDB_KEY,keep)}catch(e){}}
+  try{localStorage.setItem(FLAG,'1')}catch(e){}
+}
+
 let skipRender=false;
 let dirty=false;
 
 const $=id=>document.getElementById(id);
 const val=id=>$(id).value;
 function showLoading(s){$('loading').classList.toggle('show',s)}
-function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000)}
+/* 提示条：调用处还是老写法（消息前面带 ✅ / ⚠️），这里就地把它翻译成
+   类型 + 图标 + 文案，省得一处一处去改调用点 */
+let toastTimer=null;
+function toast(m){
+  const t=$('toast');
+  const warn=/^\s*⚠️/.test(m);
+  t.className='toast '+(warn?'warn':'ok');
+  t.innerHTML=uiIco(warn?'alert':'check-circle')+'<span>'+esc(String(m).replace(/^\s*[✅⚠️]\s*/,''))+'</span>';
+  t.classList.add('show');
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2200);
+}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/\n/g,'<br>')}
 function escAttr(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function bullets(t){const l=String(t).split('\n').map(x=>x.trim()).filter(Boolean);return l.length<=1?esc(t):'<ul>'+l.map(x=>'<li>'+esc(x.replace(/^[-•*]\s*/,''))+'</li>').join('')+'</ul>'}
+
+/* 界面图标：取自 <body> 开头那坨 sprite 里的 #i-<name>。
+   跟下面的 ICON_PATHS 不是一套 —— 那套是给简历纸面用的内联完整路径。 */
+function uiIco(name,extra){return '<svg class="i'+(extra?' '+extra:'')+'" aria-hidden="true"><use href="#i-'+name+'"/></svg>'}
+/* 头像占位（没上传时圆圈里的相机） */
+const PH_PLACEHOLDER='<span class="placeholder">'+uiIco('camera')+'</span>';
+
+/* ===== 工具栏「更多」菜单 =====
+   低频和危险操作都收在里面，少一半按钮就少一半误点。
+   点空白处或按 Esc 关闭。 */
+function toggleMoreMenu(e){if(e)e.stopPropagation();const m=$('tbMore');if(m)m.classList.toggle('open')}
+function closeMoreMenu(){const m=$('tbMore');if(m)m.classList.remove('open')}
+function menuAct(fn){closeMoreMenu();if(typeof fn==='function')fn()}
+document.addEventListener('click',function(e){
+  if(!e.target||!e.target.closest||e.target.closest('#tbMore'))return;
+  closeMoreMenu();
+});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeMoreMenu()});
+
+/* 简约线性图标：内联 SVG，stroke 用 currentColor 跟着文字颜色走。
+   不用 emoji 是因为彩色的太跳、字体不同渲染也不一致。 */
+const ICON_PATHS={
+  phone:'<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
+  mail:'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+  pin:'<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/>'
+};
+/* 日期补零：2025.5 → 2025.05（"至今"这类非日期原样返回） */
+function fmtDate(s){
+  s=String(s==null?'':s).trim();
+  const m=s.match(/^(\d{4})\s*[.\-/年]\s*(\d{1,2})\s*月?/);
+  return m?(m[1]+'.'+String(m[2]).padStart(2,'0')):s;
+}
+function ico(name){
+  const p=ICON_PATHS[name];
+  if(!p)return '';
+  return '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+p+'</svg>';
+}
 
 /* 回车自动加 "- " 前缀 */
 document.addEventListener('keydown',function(e){
@@ -445,13 +822,155 @@ document.addEventListener('keydown',function(e){
 let renderTimer=null;
 function debouncedRender(){dirty=true;clearTimeout(renderTimer);renderTimer=setTimeout(()=>{render();scheduleSave()},150)}
 
+/* ===== 文本框跟着内容长高 =====
+   工作内容那种「一行一条」的写法，一条要点就占两三行，rows=3 只能看见三行半，
+   编辑时得在框里来回滚，看不到上下文。改成内容多高框就多高，一屏看完。 */
+function autoGrow(el){
+  if(!el||el.tagName!=='TEXTAREA')return;
+  /* 先归零再读 scrollHeight，否则读到的是上一次撑开的高度，只会越撑越大 */
+  el.style.height='auto';
+  /* +2 是给行高的小数部分留余量，不然最后一行偶尔会被顶出一条滚动条 */
+  el.style.height=Math.max(70,el.scrollHeight+2)+'px';
+}
+function autoGrowAll(){
+  document.querySelectorAll('.sidebar textarea').forEach(autoGrow);
+}
+/* 表单条目是动态拼出来的（addExperience 等），与其在每个地方都记得调一次，
+   不如统一听 input 事件——顺带也覆盖了以后新加的文本框 */
+document.addEventListener('input',e=>{
+  if(e.target&&e.target.tagName==='TEXTAREA')autoGrow(e.target);
+});
+
+/* ===== 头像裁剪 =====
+   上传后不直接压缩，先弹取景框让用户自己选区域 —— 整张居中裁切时，人脸不在
+   正中就废了。取景框做成圆形，跟 .resume-avatar 的显示形状一致（所见即所得）。
+   确定后输出 400×400 的 JPEG data URL，压完通常几十 KB，不会撑爆 localStorage
+   的 ~5MB 配额（配额一爆，autoSave 的 QuotaExceededError 会让导出按钮静默失效，
+   原因见 exportPDF 上方注释）。 */
+const PHOTO_OUT=400;      /* 输出边长 */
+const CROP_D=240;         /* 取景圈直径，单位是 stage 像素 */
+let cropState=null;       /* {img,S,scale,minScale,maxScale,x,y} */
+
 function handlePhoto(input){
-  const file=input.files[0];if(!file)return;
+  const file=input.files[0];
+  input.value='';          /* 立刻清掉，否则再选同一个文件不触发 onchange */
+  if(!file)return;
+  if(!/^image\//.test(file.type)){toast('⚠️ 请选择图片文件');return}
   const reader=new FileReader();
-  reader.onload=e=>{photoDataUrl=e.target.result;$('photoPreview').innerHTML='<img src="'+photoDataUrl+'">';$('photoRemoveBtn').style.display='';render()};
+  reader.onerror=()=>toast('⚠️ 读取文件失败');
+  reader.onload=e=>{
+    const img=new Image();
+    img.onerror=()=>toast('⚠️ 这张图片读不出来，换一张试试');
+    img.onload=()=>openCropper(img);
+    img.src=e.target.result;
+  };
   reader.readAsDataURL(file);
 }
-function removePhoto(){photoDataUrl='';$('photoPreview').innerHTML='<span class="placeholder">📷</span>';$('photoRemoveBtn').style.display='none';$('photoInput').value='';render()}
+
+function openCropper(img){
+  const stage=$('cropStage'),el=$('cropImg');
+  /* 先显示再量尺寸 —— display:none 的时候 clientWidth 是 0 */
+  $('cropOverlay').classList.add('show');
+  const S=stage.clientWidth;
+  const minScale=CROP_D/Math.min(img.width,img.height);   /* 图片至少要盖满取景圈 */
+  cropState={img:img,S:S,scale:minScale,minScale:minScale,maxScale:minScale*4,x:0,y:0};
+  el.src=img.src;
+  el.style.width=img.width+'px';el.style.height=img.height+'px';
+  const z=$('cropZoom');
+  z.value=1;                                              /* 滑块 1~4 是相对 minScale 的倍数 */
+  z.oninput=function(){if(cropState)setCropScale(cropState.minScale*Number(this.value))};
+  centerCrop();
+  bindCropDrag();
+}
+
+function centerCrop(){
+  const st=cropState;
+  st.x=(st.S-st.img.width*st.scale)/2;
+  st.y=(st.S-st.img.height*st.scale)/2;
+  clampCrop();drawCrop();
+}
+
+function setCropScale(next){
+  const st=cropState;
+  next=Math.max(st.minScale,Math.min(st.maxScale,next));
+  if(next===st.scale)return;
+  /* 以取景圈中心为锚点缩放：让中心点对着的那块原图保持不动 */
+  const c=st.S/2;
+  const ix=(c-st.x)/st.scale,iy=(c-st.y)/st.scale;
+  st.scale=next;
+  st.x=c-ix*next;st.y=c-iy*next;
+  clampCrop();drawCrop();
+}
+
+/* 保证取景圈那一块始终被图片盖满，拖不出白边 */
+function clampCrop(){
+  const st=cropState,w=st.img.width*st.scale,h=st.img.height*st.scale;
+  const lo=st.S/2-CROP_D/2,hi=st.S/2+CROP_D/2;
+  st.x=Math.min(lo,Math.max(hi-w,st.x));
+  st.y=Math.min(lo,Math.max(hi-h,st.y));
+}
+
+function drawCrop(){
+  const st=cropState;
+  $('cropImg').style.transform='translate('+st.x+'px,'+st.y+'px) scale('+st.scale+')';
+}
+
+function bindCropDrag(){
+  const stage=$('cropStage');
+  if(stage.dataset.bound)return;     /* 只绑一次，之后每次打开复用 */
+  stage.dataset.bound='1';
+  let dragging=false,px=0,py=0;
+  const pt=e=>{const r=stage.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
+  stage.addEventListener('pointerdown',e=>{
+    if(!cropState)return;
+    dragging=true;stage.classList.add('dragging');
+    const p=pt(e);px=p.x;py=p.y;
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove',e=>{
+    if(!dragging||!cropState)return;
+    const p=pt(e);
+    cropState.x+=p.x-px;cropState.y+=p.y-py;
+    px=p.x;py=p.y;
+    clampCrop();drawCrop();
+    e.preventDefault();
+  });
+  window.addEventListener('pointerup',()=>{dragging=false;stage.classList.remove('dragging')});
+  stage.addEventListener('wheel',e=>{
+    if(!cropState)return;
+    e.preventDefault();
+    setCropScale(cropState.scale*(e.deltaY<0?1.1:1/1.1));
+    $('cropZoom').value=cropState.scale/cropState.minScale;
+  },{passive:false});
+  /* 点弹层空白处 = 取消，跟点「取消」按钮一致 */
+  $('cropOverlay').addEventListener('mousedown',e=>{if(e.target===$('cropOverlay'))closeCropper(false)});
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'&&$('cropOverlay').classList.contains('show'))closeCropper(false);
+  });
+}
+
+function closeCropper(ok){
+  const st=cropState;
+  $('cropOverlay').classList.remove('show');
+  $('cropStage').classList.remove('dragging');
+  $('cropImg').removeAttribute('src');   /* 放掉整张原图，别一直挂在内存里 */
+  cropState=null;
+  if(!ok||!st)return;
+  /* 把取景圈换算回原图坐标，再 1:1 画进输出画布 */
+  const s=CROP_D/st.scale;
+  const sx=Math.max(0,(st.S/2-CROP_D/2-st.x)/st.scale);
+  const sy=Math.max(0,(st.S/2-CROP_D/2-st.y)/st.scale);
+  const sw=Math.max(1,Math.min(s,st.img.width-sx,st.img.height-sy));
+  const cv=document.createElement('canvas');cv.width=PHOTO_OUT;cv.height=PHOTO_OUT;
+  const ctx=cv.getContext('2d');
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,PHOTO_OUT,PHOTO_OUT);   /* 透明 PNG 转 JPEG 会变黑底 */
+  ctx.drawImage(st.img,sx,sy,sw,sw,0,0,PHOTO_OUT,PHOTO_OUT);
+  photoDataUrl=cv.toDataURL('image/jpeg',0.9);persistPhoto(photoDataUrl);
+  $('photoPreview').innerHTML='<img src="'+photoDataUrl+'">';
+  $('photoRemoveBtn').style.display='';
+  render();autoSave();
+}
+function removePhoto(){photoDataUrl='';persistPhoto('');$('photoPreview').innerHTML=PH_PLACEHOLDER;$('photoRemoveBtn').style.display='none';$('photoInput').value='';render()}
 
 function scheduleSave(){dirty=true;clearTimeout(renderTimer);renderTimer=setTimeout(autoSave,800)}
 
@@ -461,8 +980,9 @@ function state_projs(){return state_proj.map(p=>{const el=$('proj-'+p._idx);if(!
 function state_customs(){return state_custom.map(c=>{const el=$('custom-'+c._idx);if(!el)return null;return{title:el.querySelector('[data-f="title"]').value,content:el.querySelector('[data-f="content"]').value,idx:c._idx}}).filter(Boolean)}
 
 function clearAll(){
-  if(!confirm('确定清空当前简历所有数据？'))return;
+  if(!confirm('确定清空当前表单的全部内容？（浏览器里已保存的简历不受影响）'))return;
   currentResumeId=null;
+  localStorage.removeItem(DRAFT_KEY);
   clearForm();render();renderResumeList();toast('✅ 已清空');
 }
 
@@ -493,15 +1013,20 @@ function applyThemeToInputs(){
 
 /* ===== 模块顺序：拖拽 + 按钮 ===== */
 let dragChip=null;
-const secLabels={summary:'📝 个人简介',experience:'💼 工作经历',education:'🎓 教育背景',skills:'🛠️ 专业技能',projects:'🚀 项目经验'};
+/* 栏目标题配的小图标（对应 sprite 里的 #i-xxx），自定义栏目统一用小星星 */
+const secLabels={summary:'个人简介',experience:'工作经历',education:'教育背景',skills:'专业技能',projects:'项目经验'};
+const secIcons={summary:'doc',experience:'briefcase',education:'grad',skills:'wrench',projects:'rocket'};
 function getSecLabel(key){
   if(secLabels[key])return secLabels[key];
   if(key.startsWith('custom_')){
     const idx=key.split('_')[1];
     const el=$('custom-'+idx);
-    if(el){const t=el.querySelector('[data-f="title"]').value;return t?'📌 '+t:'📌 自定义栏目'}
+    if(el){const t=el.querySelector('[data-f="title"]').value;return t||'自定义栏目'}
   }
   return key;
+}
+function secChipHtml(key){
+  return uiIco(secIcons[key]||'sparkles')+'<span>'+esc(getSecLabel(key))+'</span>';
 }
 
 function rebuildOrderChips(){
@@ -509,14 +1034,18 @@ function rebuildOrderChips(){
   sectionOrder.forEach((key,i)=>{
     const chip=document.createElement('span');
     chip.className='order-chip';chip.draggable=true;chip.dataset.key=key;
-    const label=document.createElement('span');label.textContent=getSecLabel(key);chip.appendChild(label);
+    const label=document.createElement('span');
+    label.style.display='flex';label.style.alignItems='center';label.style.gap='5px';
+    label.innerHTML=secChipHtml(key);chip.appendChild(label);
     if(i>0){
-      const btnUp=document.createElement('button');btnUp.className='order-move-btn';btnUp.textContent='↑';
+      const btnUp=document.createElement('button');btnUp.className='order-move-btn';btnUp.innerHTML=uiIco('arrow-up');
+      btnUp.title='上移';
       btnUp.onclick=function(e){e.stopPropagation();moveSection(key,-1)};
       chip.appendChild(btnUp);
     }
     if(i<sectionOrder.length-1){
-      const btnDown=document.createElement('button');btnDown.className='order-move-btn';btnDown.textContent='↓';
+      const btnDown=document.createElement('button');btnDown.className='order-move-btn';btnDown.innerHTML=uiIco('arrow-down');
+      btnDown.title='下移';
       btnDown.onclick=function(e){e.stopPropagation();moveSection(key,1)};
       chip.appendChild(btnDown);
     }
@@ -557,7 +1086,7 @@ let customCount=0;let state_custom=[];
 function addExperience(data){
   data=data||{};
   const i=expCount++;const div=document.createElement('div');div.className='item-block';div.id='exp-'+i;
-  div.innerHTML='<button class="remove-btn" onclick="removeItem(\'exp-'+i+'\',\'experience\','+i+')">✕</button>'
+  div.innerHTML='<button class="remove-btn" title="删除这一条" onclick="removeItem(\'exp-'+i+'\',\'experience\','+i+')">'+uiIco('x')+'</button>'
     +'<div class="field"><label>公司</label><input data-f="company" value="'+escAttr(data.company||'')+'" oninput="debouncedRender()" placeholder="字节跳动"></div>'
     +'<div class="field"><label>职位</label><input data-f="position" value="'+escAttr(data.position||'')+'" oninput="debouncedRender()" placeholder="高级前端工程师"></div>'
     +'<div class="row"><div class="field"><label>开始</label><input data-f="start" value="'+escAttr(data.start||'')+'" oninput="debouncedRender()" placeholder="2020.06"></div><div class="field"><label>结束</label><input data-f="end" value="'+escAttr(data.end||'')+'" oninput="debouncedRender()" placeholder="至今"></div></div>'
@@ -568,7 +1097,7 @@ function addExperience(data){
 function addEducation(data){
   data=data||{};
   const i=eduCount++;const div=document.createElement('div');div.className='item-block';div.id='edu-'+i;
-  div.innerHTML='<button class="remove-btn" onclick="removeItem(\'edu-'+i+'\',\'education\','+i+')">✕</button>'
+  div.innerHTML='<button class="remove-btn" title="删除这一条" onclick="removeItem(\'edu-'+i+'\',\'education\','+i+')">'+uiIco('x')+'</button>'
     +'<div class="field"><label>学校</label><input data-f="school" value="'+escAttr(data.school||'')+'" oninput="debouncedRender()" placeholder="北京大学"></div>'
     +'<div class="field"><label>专业 / 学位</label><input data-f="major" value="'+escAttr(data.major||'')+'" oninput="debouncedRender()" placeholder="计算机科学与技术 · 硕士"></div>'
     +'<div class="row"><div class="field"><label>开始</label><input data-f="start" value="'+escAttr(data.start||'')+'" oninput="debouncedRender()" placeholder="2014.09"></div><div class="field"><label>结束</label><input data-f="end" value="'+escAttr(data.end||'')+'" oninput="debouncedRender()" placeholder="2018.06"></div></div>';
@@ -578,7 +1107,7 @@ function addEducation(data){
 function addProject(data){
   data=data||{};
   const i=projCount++;const div=document.createElement('div');div.className='item-block';div.id='proj-'+i;
-  div.innerHTML='<button class="remove-btn" onclick="removeItem(\'proj-'+i+'\',\'projects\','+i+')">✕</button>'
+  div.innerHTML='<button class="remove-btn" title="删除这一条" onclick="removeItem(\'proj-'+i+'\',\'projects\','+i+')">'+uiIco('x')+'</button>'
     +'<div class="field"><label>项目名称</label><input data-f="name" value="'+escAttr(data.name||'')+'" oninput="debouncedRender()" placeholder="企业级中台系统"></div>'
     +'<div class="field"><label>技术栈</label><input data-f="tech" value="'+escAttr(data.tech||'')+'" oninput="debouncedRender()" placeholder="React + TypeScript"></div>'
     +'<div class="field"><label>项目描述（每行一条）</label><textarea data-f="desc" rows="3" oninput="debouncedRender()" placeholder="- 设计并实现微前端架构\\n- 支撑 2000+ 内部用户使用">'+escAttr(data.desc||'')+'</textarea></div>';
@@ -598,7 +1127,7 @@ function addCustomSection(data){
   data=data||{};
   const i=customCount++;
   const div=document.createElement('div');div.className='item-block';div.id='custom-'+i;
-  div.innerHTML='<button class="remove-btn" onclick="removeItem(\'custom-'+i+'\',\'custom\','+i+')">✕</button>'
+  div.innerHTML='<button class="remove-btn" title="删除这一条" onclick="removeItem(\'custom-'+i+'\',\'custom\','+i+')">'+uiIco('x')+'</button>'
     +'<div class="field"><label>栏目标题</label><input data-f="title" value="'+escAttr(data.title||'')+'" oninput="debouncedRender();updateCustomLabel('+i+')" placeholder="自我评价 / 证书荣誉 / 语言能力"></div>'
     +'<div class="field"><label>内容（每行一条）</label><textarea data-f="content" rows="3" oninput="debouncedRender()" placeholder="- 英语流利，CET-6 590分\\n- 持有 PMP 证书">'+escAttr(data.content||'')+'</textarea></div>';
   $('custom-list').appendChild(div);
@@ -610,9 +1139,8 @@ function addCustomSection(data){
 }
 function updateCustomLabel(i){
   const el=$('custom-'+i);if(!el)return;
-  const title=el.querySelector('[data-f="title"]').value||'自定义';
-  const key='custom_'+i;
-  if(secLabels[key]!==undefined)secLabels[key]='📌 '+title;
+  const title=el.querySelector('[data-f="title"]').value||'自定义栏目';
+  secLabels['custom_'+i]=title;   /* 芯片文案跟着栏目标题走，图标固定用小星星 */
   rebuildOrderChips();
 }
 
@@ -628,41 +1156,48 @@ function render(){
   const summary=val('summary'),skills=val('skills');
 
   const contactParts=[];
-  if(phone)contactParts.push('<span>📱 '+esc(phone)+'</span>');
-  if(email)contactParts.push('<span>✉️ '+esc(email)+'</span>');
-  if(city)contactParts.push('<span> '+esc(city)+'</span>');
-  if(website)contactParts.push('<span>出生年月：'+esc(website)+'</span>');
-
-  const skillTags=skills?skills.split(/[,，]/).map(s=>s.trim()).filter(Boolean).map(s=>'<span class="resume-skill-tag">'+esc(s)+'</span>').join(''):'';
+  if(phone)contactParts.push('<span>'+ico('phone')+esc(phone)+'</span>');
+  if(email)contactParts.push('<span>'+ico('mail')+esc(email)+'</span>');
+  if(city)contactParts.push('<span>'+ico('pin')+esc(city)+'</span>');
+  /* 出生年月（字段名沿用了 website，别被误导）。写成「出生年月 2001.12」而不是
+     配图标 —— 蛋糕太庆贺、日历又和普通日期分不开，直接写标签最无歧义 */
+  if(website)contactParts.push('<span>出生年月 '+esc(website)+'</span>');
 
   let avatarHtml;
   if(photoDataUrl)avatarHtml='<div class="resume-avatar"><img src="'+photoDataUrl+'"></div>';
-  else avatarHtml='<div class="resume-avatar">'+(name?esc(name.charAt(0)):'?')+'</div>';
+  /* 没传照片就不画头像圈 —— 空圆圈里塞一个孤零零的字比没有更难看 */
+  else avatarHtml='';
 
   const sectionHtml={
-    summary:summary?'<div class="resume-section"><div class="resume-section-title">个人简介</div><div class="resume-summary">'+esc(summary)+'</div></div>':'',
+    summary:summary?'<div class="resume-section"><div class="resume-section-title" data-sec="summary">个人简介</div><div class="resume-summary">'+esc(summary)+'</div></div>':'',
     experience:buildExpHtml(),education:buildEduHtml(),
-    skills:skillTags?'<div class="resume-section"><div class="resume-section-title">专业技能</div><div class="resume-skills">'+skillTags+'</div></div>':'',
+    skills:buildSkillsHtml(skills),
     projects:buildProjHtml()
   };
   state_custom.forEach(c=>{
     const el=$('custom-'+c._idx);if(!el)return;
     const title=el.querySelector('[data-f="title"]').value||'自定义栏目';
     const content=el.querySelector('[data-f="content"]').value;
-    if(content)sectionHtml['custom_'+c._idx]='<div class="resume-section"><div class="resume-section-title">'+esc(title)+'</div><div class="resume-item-desc">'+bullets(content)+'</div></div>';
+    if(content)sectionHtml['custom_'+c._idx]='<div class="resume-section"><div class="resume-section-title" data-sec="custom_'+c._idx+'">'+esc(title)+'</div><div class="resume-item-desc">'+bullets(content)+'</div></div>';
   });
 
-  const headerHtml='<div class="resume-header"><div class="resume-header-inner">'+avatarHtml+'<div class="resume-header-text"><div class="resume-name">'+(esc(name)||'你的姓名')+'</div><div class="resume-title">'+(esc(jobTitle)||'求职意向')+'</div></div></div><div class="resume-contact">'+(contactParts.join('')||'<span>填写联系方式</span>')+'</div></div>';
+  /* 联系方式放页头下方的白色区域，不放渐变上 —— 渐变的浅色端白字对比度不够，
+     而且不同配色深浅不一，放在白底上就一劳永逸了 */
+  const contactHtml=contactParts.length?'<div class="resume-contact">'+contactParts.join('')+'</div>':'';
+  const headerHtml='<div class="resume-header"><div class="resume-header-inner">'+avatarHtml+'<div class="resume-header-text"><div class="resume-name">'+(esc(name)||'你的姓名')+'</div><div class="resume-title">'+(esc(jobTitle)||'求职意向')+'</div></div></div></div>';
 
   if(layout==='sidebar'){
     const left=[sectionHtml.education,sectionHtml.skills].filter(Boolean).join('');
     const right=sectionOrder.filter(k=>k!=='education'&&k!=='skills').map(k=>sectionHtml[k]||'').join('');
-    resume.innerHTML=headerHtml+'<div class="resume-body"><div class="resume-sidebar-col">'+left+'</div><div class="resume-main-col">'+right+'</div></div>';
+    resume.innerHTML=headerHtml+contactHtml+'<div class="resume-body"><div class="resume-sidebar-col">'+left+'</div><div class="resume-main-col">'+right+'</div></div>';
   }else{
-    resume.innerHTML=headerHtml+'<div class="resume-body">'+sectionOrder.map(k=>sectionHtml[k]||'').join('')+'</div>';
+    resume.innerHTML=headerHtml+contactHtml+'<div class="resume-body">'+sectionOrder.map(k=>sectionHtml[k]||'').join('')+'</div>';
   }
 
   applyTheme(currentTheme);
+  /* 每次重画完顺手把文本框撑到内容高度：导入 JSON、切简历、新增条目
+     走的都是 render()，挂在这里就不用挨个函数去补 */
+  autoGrowAll();
 }
 
 function buildExpHtml(){
@@ -671,18 +1206,18 @@ function buildExpHtml(){
     const c=el.querySelector('[data-f="company"]').value,p=el.querySelector('[data-f="position"]').value;
     const s=el.querySelector('[data-f="start"]').value,en=el.querySelector('[data-f="end"]').value;
     const d=el.querySelector('[data-f="desc"]').value;
-    return '<div class="resume-item"><div class="resume-item-header"><span class="resume-item-title">'+esc(c)+'</span><span class="resume-item-date">'+esc(s)+(s||en?' — ':'')+esc(en)+'</span></div><div class="resume-item-sub">'+esc(p)+'</div><div class="resume-item-desc">'+bullets(d)+'</div></div>';
+    return '<div class="resume-item"><div class="resume-item-header"><span class="resume-item-title">'+esc(c)+'</span><span class="resume-item-date">'+esc(fmtDate(s))+(s||en?' – ':'')+esc(fmtDate(en))+'</span></div><div class="resume-item-sub">'+esc(p)+'</div><div class="resume-item-desc">'+bullets(d)+'</div></div>';
   }).join('');
-  return items?'<div class="resume-section"><div class="resume-section-title">工作经历</div>'+items+'</div>':'';
+  return items?'<div class="resume-section"><div class="resume-section-title" data-sec="experience">工作经历</div>'+items+'</div>':'';
 }
 function buildEduHtml(){
   const items=state_edu.map(e=>{
     const el=$('edu-'+e._idx);if(!el)return '';
     const sc=el.querySelector('[data-f="school"]').value,m=el.querySelector('[data-f="major"]').value;
     const s=el.querySelector('[data-f="start"]').value,en=el.querySelector('[data-f="end"]').value;
-    return '<div class="resume-item"><div class="resume-item-header"><span class="resume-item-title">'+esc(sc)+'</span><span class="resume-item-date">'+esc(s)+(s||en?' — ':'')+esc(en)+'</span></div><div class="resume-item-sub">'+esc(m)+'</div></div>';
+    return '<div class="resume-item"><div class="resume-item-header"><span class="resume-item-title">'+esc(sc)+'</span><span class="resume-item-date">'+esc(fmtDate(s))+(s||en?' – ':'')+esc(fmtDate(en))+'</span></div><div class="resume-item-sub">'+esc(m)+'</div></div>';
   }).join('');
-  return items?'<div class="resume-section"><div class="resume-section-title">教育背景</div>'+items+'</div>':'';
+  return items?'<div class="resume-section"><div class="resume-section-title" data-sec="education">教育背景</div>'+items+'</div>':'';
 }
 function buildProjHtml(){
   const items=state_proj.map(p=>{
@@ -691,40 +1226,173 @@ function buildProjHtml(){
     const d=el.querySelector('[data-f="desc"]').value;
     return '<div class="resume-item"><div class="resume-item-title">'+esc(n)+'</div>'+(t?'<div class="resume-item-sub">'+esc(t)+'</div>':'')+'<div class="resume-item-desc">'+bullets(d)+'</div></div>';
   }).join('');
-  return items?'<div class="resume-section"><div class="resume-section-title">项目经验</div>'+items+'</div>':'';
+  return items?'<div class="resume-section"><div class="resume-section-title" data-sec="projects">项目经验</div>'+items+'</div>':'';
 }
 
+/* 按 、,， 切分标签，但括号内的分隔符不切（如「MySQL（增删改查、联表查询）」算一个标签） */
+function splitTags(s){
+  const out=[];let cur='',depth=0;
+  for(const ch of String(s)){
+    if('（(【['.indexOf(ch)>-1)depth++;
+    else if('）)】]'.indexOf(ch)>-1)depth=Math.max(0,depth-1);
+    if(depth===0&&'、,，'.indexOf(ch)>-1){if(cur.trim())out.push(cur.trim());cur=''}
+    else cur+=ch;
+  }
+  if(cur.trim())out.push(cur.trim());
+  return out;
+}
+
+/* 专业技能：支持「单行逗号分隔」和「多行分组（组名：a、b、c）」两种写法 */
+function buildSkillsHtml(raw){
+  if(!raw)return '';
+  const lines=String(raw).split('\n').map(s=>s.trim()).filter(Boolean);
+  const isGrouped=lines.length>1&&lines.every(l=>/[：:]/.test(l));
+  const tagHtml=arr=>arr.map(s=>'<span class="resume-skill-tag">'+esc(s)+'</span>').join('');
+  let inner;
+  if(isGrouped){
+    inner=lines.map(l=>{
+      const m=l.match(/^(.+?)[：:]\s*(.+)$/);
+      if(!m)return '';
+      return '<div class="skill-group"><div class="skill-group-name">'+esc(m[1])+'</div><div class="resume-skills">'+tagHtml(splitTags(m[2]))+'</div></div>';
+    }).join('');
+  }else{
+    const tags=tagHtml(splitTags(lines.join(',')));
+    inner=tags?'<div class="resume-skills">'+tags+'</div>':'';
+  }
+  return inner?'<div class="resume-section"><div class="resume-section-title" data-sec="skills">专业技能</div>'+inner+'</div>':'';
+}
+
+/* 点预览里的栏目标题 → 左侧表单滚到对应编辑区。
+   预览的栏目由 render() 生成，标题上带 data-sec（summary / experience / custom_<i> …），
+   与侧栏 .section[data-sec] 一一对应。滚的是 .sidebar-body —— 它才是 overflow-y:auto
+   的那个；直接 scrollIntoView 只会让内层跳、外层不动，位置会歪。
+   移动端 .sidebar 变静态高度、sidebar-body 不再滚动，那时才退回 scrollIntoView。 */
+function jumpToFormSection(key){
+  const body=document.querySelector('.sidebar-body');
+  if(!body)return;
+  let target;
+  if(key.indexOf('custom_')===0){
+    const blk=$('custom-'+key.slice(7));
+    target=blk?blk.closest('.section'):null;
+  }else{
+    target=document.querySelector('.sidebar-body .section[data-sec="'+key+'"]');
+  }
+  if(!target)return;
+
+  if(body.scrollHeight>body.clientHeight+1){
+    const delta=target.getBoundingClientRect().top-body.getBoundingClientRect().top;
+    body.scrollTo({top:Math.max(0,body.scrollTop+delta-12),behavior:'smooth'});
+  }else{
+    target.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+
+  const title=target.querySelector('.section-title');
+  if(title){
+    title.classList.remove('flash');
+    void title.offsetWidth;   /* 强制重排，连点两次也能重放动画 */
+    title.classList.add('flash');
+    setTimeout(()=>title.classList.remove('flash'),1200);
+  }
+}
+/* 用 document 级委托：预览内容是 render() 反复重建的，绑在 #resume 上会被冲掉 */
+document.addEventListener('click',function(e){
+  const t=e.target&&e.target.closest?e.target.closest('.resume-section-title[data-sec]'):null;
+  if(t)jumpToFormSection(t.dataset.sec);
+});
+
+/* 反向：鼠标移到左侧某个编辑区 → 右侧预览里对应的栏目标题高亮。
+   工作经历的多个 .item-block 共用预览里的一个「工作经历」，所以按最近的
+   .section[data-sec] 找；自定义栏目每个 .item-block 在预览里是独立一节，
+   要按 custom-<i> 单独映射。 */
+function pickSidebarKey(el){
+  const blk=el.closest('.item-block');
+  if(blk&&blk.id&&blk.id.indexOf('custom-')===0)return 'custom_'+blk.id.slice(7);
+  const sec=el.closest('.section[data-sec]');
+  return sec?sec.dataset.sec:null;
+}
+let pingKey=null;
+function setPing(key){
+  if(key===pingKey)return;
+  if(pingKey){
+    const old=$('resume').querySelector('.resume-section-title[data-sec="'+pingKey+'"]');
+    if(old)old.classList.remove('ping');
+  }
+  pingKey=key;
+  if(key){
+    const el=$('resume').querySelector('.resume-section-title[data-sec="'+key+'"]');
+    if(el)el.classList.add('ping');
+  }
+}
+document.addEventListener('mouseover',function(e){
+  if(!e.target||!e.target.closest)return;
+  setPing(pickSidebarKey(e.target));
+});
+/* 只有整个离开侧栏时才取消；侧栏内部换区域交给上面的 mouseover 更新 */
+document.addEventListener('mouseout',function(e){
+  if(!e.target||!e.target.closest||!e.target.closest('.sidebar-body'))return;
+  const to=e.relatedTarget;
+  if(to&&to.closest&&to.closest('.sidebar-body'))return;
+  setPing(null);
+});
+
 /* ===== 导出 ===== */
+/* 导出倍率。A4 纸宽 210mm ≈ 794 CSS px，乘倍率后铺满 210mm 得到的实际 DPI：
+     scale 2 → 192 DPI（原来就是这档，偏软，放大能看出糊）
+     scale 3 → 288 DPI（接近印刷标准的 300）
+     scale 4 → 384 DPI（更稳，代价是内存和文件大小都往上走）
+   PDF 是拿去打印的，用 4；JPG 一般只在屏幕上发人看，3 足够。 */
+const PDF_SCALE=4, JPG_SCALE=3;
+
+/* 整个流程都必须在 try 里：原来 render()/autoSave() 在 try 外面，任何一步抛异常
+   都会变成 async 函数的未捕获 rejection —— 界面既不弹错也不下载，看着像"没反应"。
+   showLoading 提到最前面并放进 finally，这样无论成功失败转圈都会停。 */
 async function exportPDF(){
-  clearTimeout(renderTimer);render();autoSave();
-  showLoading(true);await new Promise(r=>setTimeout(r,200));
-  const el=$('resume');const os=el.style.boxShadow;el.style.boxShadow='none';
+  showLoading(true);
+  let el=null,os='';
   try{
-    const canvas=await html2canvas(el,{scale:2,useCORS:true,logging:false,backgroundColor:'#ffffff'});
-    const imgData=canvas.toDataURL('image/jpeg',0.98);
-    const mmW=canvas.width*25.4/96/2,mmH=canvas.height*25.4/96/2;
+    clearTimeout(renderTimer);render();autoSave();
+    await new Promise(r=>setTimeout(r,200));
+    el=$('resume');os=el.style.boxShadow;el.style.boxShadow='none';
+    const canvas=await html2canvas(el,{scale:PDF_SCALE,useCORS:true,logging:false,backgroundColor:'#ffffff'});
+    /* 别改成 PNG：jsPDF 不对 PNG 做 Flate 压缩，是把解出来的位图原样写进 PDF。
+       3176×4493 的 RGB 原图 ≈ 43MB，加上渐变侧边栏压缩率又低，出来就是 50MB。
+       JPEG 确实有损，但到了这个像素密度，噪点相对字高已经小到看不见——
+       决定清不清爽的是倍率，不是编码。0.95 是体积和字边缘的平衡点。 */
+    const imgData=canvas.toDataURL('image/jpeg',0.95);
+    /* 除以 PDF_SCALE 不能省：canvas 尺寸是 CSS 像素乘过倍率的，不除回来
+       页面尺寸会跟着倍率一起变大（scale:4 会得到 840mm 宽的纸） */
+    const mmW=canvas.width*25.4/96/PDF_SCALE,mmH=canvas.height*25.4/96/PDF_SCALE;
     const Ctor=(window.jspdf&&window.jspdf.jsPDF)||(typeof jsPDF!=='undefined'?jsPDF:null);
     if(!Ctor)throw new Error('jsPDF not loaded');
     const pdf=new Ctor({unit:'mm',format:[mmW,mmH],orientation:mmW>mmH?'landscape':'portrait'});
     pdf.addImage(imgData,'JPEG',0,0,mmW,mmH);
     pdf.save((val('name')||'简历')+'.pdf');
-  }catch(e){alert('导出 PDF 失败: '+e.message)}finally{el.style.boxShadow=os}
-  showLoading(false);
+  }catch(e){alert('导出 PDF 失败: '+e.message)}
+  finally{
+    if(el)el.style.boxShadow=os;
+    showLoading(false);
+  }
 }
 async function exportJPG(){
-  clearTimeout(renderTimer);render();autoSave();
-  showLoading(true);await new Promise(r=>setTimeout(r,200));
-  const el=$('resume');const os=el.style.boxShadow;el.style.boxShadow='none';
+  showLoading(true);
+  let el=null,os='';
   try{
-    const canvas=await html2canvas(el,{scale:2,useCORS:true,logging:false,backgroundColor:'#ffffff'});
+    clearTimeout(renderTimer);render();autoSave();
+    await new Promise(r=>setTimeout(r,200));
+    el=$('resume');os=el.style.boxShadow;el.style.boxShadow='none';
+    const canvas=await html2canvas(el,{scale:JPG_SCALE,useCORS:true,logging:false,backgroundColor:'#ffffff'});
     const link=document.createElement('a');link.download=(val('name')||'简历')+'.jpg';link.href=canvas.toDataURL('image/jpeg',0.95);link.click();
   }catch(e){alert('导出失败: '+e.message)}
-  finally{el.style.boxShadow=os}
-  showLoading(false);
+  finally{
+    if(el)el.style.boxShadow=os;
+    showLoading(false);
+  }
 }
 
 /* ===== 示例数据 ===== */
 function loadSample(){
+  /* 一按就把整张表换成示例数据，误点代价太大 —— 先拦一道 */
+  if(!confirm('加载示例数据会覆盖当前填写的所有内容，确定继续？'))return;
   $('name').value='张三';$('jobTitle').value='高级前端工程师';
   $('phone').value='138-8888-8888';$('email').value='zhangsan@example.com';
   $('city').value='北京';$('website').value='2001.12';
@@ -746,18 +1414,302 @@ function loadSample(){
   render();toast('✅ 示例数据已加载');
 }
 
-/* ===== 初始化 ===== */
-migrateOldData();
-const idx=getResumeIndex();
-if(idx.length>0){
-  currentResumeId=idx[0].id;
-  const raw=localStorage.getItem(RESUME_PREFIX+currentResumeId);
-  if(raw)applyResumeData(JSON.parse(raw));
-  else{rebuildOrderChips();render()}
-}else{
-  rebuildOrderChips();render();
+/* ===== JSON 数据源 =====
+   简历内容存在同目录的 resume.json 里，改那个文件就行，不用动这个 HTML。
+   resume.json 的字段与「导出 JSON」导出的完全一致，可以来回倒。 */
+const LAST_IMPORT_KEY='resume_pro_lastimport';
+const AUTO_JSON_KEY='resume_pro_autojson';
+
+function autoJsonEnabled(){const v=localStorage.getItem(AUTO_JSON_KEY);return v===null?true:v==='1'}
+function setAutoJson(on){
+  localStorage.setItem(AUTO_JSON_KEY,on?'1':'0');
+  toast(on?'✅ 启动时会自动读 resume.json':'已关闭自动读取');
 }
-renderResumeList();
+
+/* 把一份简历数据铺到表单上（解除绑定，避免点「保存」时覆盖已存简历） */
+function fillForm(d){
+  applyResumeData(d);
+  currentResumeId=null;
+  restorePhoto();
+  renderResumeList();
+}
+
+/* 导入：支持「单个简历对象」或「简历对象数组」 */
+function importJsonData(d,sourceName){
+  if(Array.isArray(d)){
+    if(!d.length){toast('⚠️ JSON 数组是空的');return}
+    if(!importResumeList(d))return;
+    if(sourceName)toast('✅ 已从 '+sourceName+' 导入 '+d.length+' 份简历');
+    return;
+  }
+  if(!d||typeof d!=='object'){toast('⚠️ JSON 格式不对：顶层应该是一个对象或数组');return}
+  fillForm(d);
+  try{localStorage.setItem(LAST_IMPORT_KEY,JSON.stringify(textOnly(d)))}catch(e){}
+  if(sourceName){
+    toast('✅ 已从 '+sourceName+' 载入');
+  }
+}
+
+/* 数组形式：批量存进左侧「简历管理」 */
+function importResumeList(list){
+  const idx=getResumeIndex();
+  let n=0;
+  list.forEach(d=>{
+    if(idx.length>=MAX_RESUMES)return;
+    const id=genId();
+    localStorage.setItem(RESUME_PREFIX+id,JSON.stringify(textOnly(d)));
+    idx.unshift({id:id,name:d.name||'导入简历',createdAt:Date.now(),updatedAt:Date.now()});
+    n++;
+  });
+  if(!n){toast('⚠️ 简历数量已达上限 '+MAX_RESUMES);return false}
+  saveResumeIndex(idx);
+  currentResumeId=idx[0].id;
+  applyResumeData(list[0]);
+  renderResumeList();
+  return true;
+}
+
+function flashHint(msg){
+  const h=$('jsonHint');
+  h.textContent=msg;
+  h.title=msg;   /* 长提示在工具栏里会被省略号截掉，悬停看全文 */
+  h.style.transition='none';h.style.opacity='1';
+}
+
+/* 读取用户选中的 / 拖进来的 JSON 文件 */
+function readJsonFile(file){
+  if(!file)return;
+  if(!/\.json$/i.test(file.name)){toast('⚠️ 请选择 .json 文件');return}
+  const r=new FileReader();
+  r.onload=e=>{
+    try{importJsonData(JSON.parse(e.target.result),file.name)}
+    catch(err){alert('JSON 解析失败：'+err.message)}
+  };
+  r.readAsText(file,'utf-8');
+}
+function pickJsonFile(){$('jsonInput').click()}
+function handleJsonInput(input){readJsonFile(input.files[0]);input.value=''}
+
+/* ===== 写回 resume.json（File System Access API）=====
+   浏览器不能凭空写本地文件，但可以让用户授权一次：第一次点「写入」时选一次
+   resume.json，句柄存进 IndexedDB，之后每次点都原地写、不再弹框。
+   http://127.0.0.1 和 file:// 都算安全上下文，所以两种打开方式都能用；
+   Firefox / Safari 没这个 API，自动退回下载。 */
+const FS_DB='resume_pro_fs',FS_STORE='handles',FS_KEY='resumeJson';
+let fsHandle=null;
+
+function idbOpen(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(FS_DB,1);
+    r.onupgradeneeded=()=>r.result.createObjectStore(FS_STORE);
+    r.onsuccess=()=>res(r.result);
+    r.onerror=()=>rej(r.error);
+  });
+}
+async function idbGet(k){
+  const db=await idbOpen();
+  return new Promise((res,rej)=>{
+    const q=db.transaction(FS_STORE,'readonly').objectStore(FS_STORE).get(k);
+    q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);
+  });
+}
+async function idbSet(k,v){
+  const db=await idbOpen();
+  return new Promise((res,rej)=>{
+    const q=db.transaction(FS_STORE,'readwrite').objectStore(FS_STORE).put(v,k);
+    q.onsuccess=()=>res();q.onerror=()=>rej(q.error);
+  });
+}
+
+function fsWritable(){return typeof window.showSaveFilePicker==='function'}
+
+/* 启动时取回句柄，不阻塞初始化 */
+function restoreFsHandle(){
+  if(!fsWritable())return;
+  idbGet(FS_KEY).then(h=>{if(h){fsHandle=h;updateWriteBtn()}}).catch(()=>{});
+}
+
+function updateWriteBtn(){
+  const b=$('btnWrite');if(!b)return;
+  b.classList.toggle('dirty',!!dirty);   /* 变琥珀 + 亮小圆点，见 .btn-write.dirty */
+  const target=fsHandle?fsHandle.name:(fsWritable()?'未选择（首次写入时选一次）':'此浏览器不支持写入');
+  b.title=(dirty?'当前有改动还没落盘 · ':'')+'写入目标：'+target;
+  /* 菜单里也报一遍当前写到哪个文件 —— 换过文件之后光看按钮是看不出来的 */
+  const info=$('writeTargetInfo');
+  if(info)info.textContent='写入目标：'+target;
+}
+
+/* 取句柄：没有就弹一次选择框；有但权限被浏览器回收就重新申请。
+   forcePick=true 时跳过「记住的那个」，直接弹选择框（菜单里的"选择文件并写入"用）。
+   注意这条路径上不能先 await 别的东西：showSaveFilePicker 必须在用户手势的
+   激活窗口里调用，中途 await 一下就可能被判成非用户触发而报错。 */
+async function ensureFsHandle(forcePick){
+  if(!forcePick){
+    /* 用 1.5s 上限兜住 IndexedDB 的读取，别把激活窗口耗掉 */
+    if(!fsHandle){
+      try{
+        fsHandle=await Promise.race([
+          idbGet(FS_KEY),
+          new Promise(r=>setTimeout(()=>r(null),1500))
+        ]);
+      }catch(e){}
+    }
+    if(fsHandle){
+      let p=await fsHandle.queryPermission({mode:'readwrite'});
+      if(p!=='granted')p=await fsHandle.requestPermission({mode:'readwrite'});
+      if(p==='granted')return fsHandle;
+      fsHandle=null;
+    }
+  }
+  const h=await window.showSaveFilePicker({
+    suggestedName:'resume.json',
+    types:[{description:'JSON 文件',accept:{'application/json':['.json']}}]
+  });
+  fsHandle=h;idbSet(FS_KEY,h).catch(()=>{});
+  return h;
+}
+
+/* 只负责「设定」写入目标，不顺手写文件 —— 设好之后，工具条上那个
+   「写入 JSON 文件」每次都写到它（句柄存在 IndexedDB，下次打开还记得）。 */
+async function setWriteTarget(){
+  if(!fsWritable()){toast('⚠️ 此浏览器不支持指定文件，写入会改为下载');return}
+  try{
+    const h=await ensureFsHandle(true);
+    updateWriteBtn();
+    toast('✅ 写入目标已设为 '+h.name);
+  }catch(e){
+    if(e&&e.name==='AbortError'){toast('已取消');return}
+    toast('⚠️ 设置失败：'+((e&&e.message)||e));
+  }
+}
+
+async function writeResumeJson(){
+  if(!fsWritable()){toast('⚠️ 此浏览器不支持直接写入，改为下载');exportJson();return}
+  /* 句柄必须先拿到：首次会弹系统选择框，而它必须在这次点击的激活窗口里调用，
+     所以弹框之前不能先 await 别的东西（比如下面那个读文件比对） */
+  let h;
+  try{
+    h=await ensureFsHandle();
+  }catch(e){
+    if(e&&e.name==='AbortError'){toast('已取消');return}
+    toast('⚠️ 写入失败：'+((e&&e.message)||e));return;
+  }
+  const data=JSON.stringify(buildResumeData(),null,2);
+  /* 磁盘上现在的内容，跟页面加载时读到的是不是同一份？ */
+  let stale=false;
+  try{
+    const disk=await (await h.getFile()).text();
+    stale=!!diskSnapshot&&disk.trim()!==diskSnapshot.trim()&&disk.trim()!==data.trim();
+  }catch(e){}
+  const msg='写入 '+(h.name||'JSON 文件')+'？\n页面里的内容会直接覆盖该文件原有的内容。'
+    +(stale?'\n\n⚠️ 该文件的内容和页面加载时不一样（可能被别处改过或写过别的版本），继续会把它覆盖掉。':'');
+  if(!confirm(msg)){toast('已取消');return}
+  try{
+    const w=await h.createWritable();
+    await w.write(data);
+    await w.close();
+    diskSnapshot=data;          /* 刚写的这份就是磁盘现状，别再误报"被改过" */
+    dirty=false;updateWriteBtn();
+    toast('✅ 已写入 '+h.name);
+  }catch(e){
+    if(e&&e.name==='AbortError'){toast('已取消');return}
+    toast('⚠️ 写入失败：'+((e&&e.message)||e));
+  }
+}
+
+/* 表单里改了东西却没写回文件时，刷新/关闭前拦一下 */
+window.addEventListener('beforeunload',e=>{
+  if(dirty){e.preventDefault();e.returnValue=''}
+});
+
+/* 自动读取同目录 resume.json。
+   只有页面通过 http(s) 打开才读得到；file:// 双击打开会被浏览器 CORS 拦掉，
+   这里静默失败，走初始化里的兜底逻辑。 */
+/* 页面加载时那份 JSON 的原文快照。写入前拿它跟磁盘上的实际内容比一比，
+   能挡住最常见的一种翻车：页面还停在旧内容上，中间文件被别的地方改过了，
+   这时候点写入就是把新版盖掉。 */
+let diskSnapshot='';
+
+async function autoLoadJson(){
+  if(!autoJsonEnabled())return false;
+  try{
+    const res=await fetch('resume.json',{cache:'no-store'});
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const txt=await res.text();
+    diskSnapshot=txt;
+    importJsonData(JSON.parse(txt),'resume.json');
+    return true;
+  }catch(e){return false}
+}
+
+/* 把当前表单导出成 JSON，方便回传修改 */
+function exportJson(){
+  const data=buildResumeData();
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=(data.name||'简历')+'.json';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  toast('✅ 已导出 JSON');
+}
+
+/* 把 JSON 文件直接拖到页面上就能载入 */
+['dragover','drop'].forEach(function(t){
+  document.addEventListener(t,function(e){
+    if(!e.dataTransfer||!e.dataTransfer.files||!e.dataTransfer.files.length)return;
+    e.preventDefault();
+    if(t==='drop')readJsonFile(e.dataTransfer.files[0]);
+  });
+});
+
+/* ===== 初始化 ===== */
+(async function init(){
+  /* 老版本把原图直接写进了 localStorage，几条记录就把 5MB 配额撑爆 ——
+     先搬去 IndexedDB 腾出空间，否则后面每一次写入都会失败。
+     必须跑在 migrateOldData 前面：它会把旧的 resume_pro_data 变成一条正式记录，
+     顺序反了那张头像就摘不出来了 */
+  await migratePhotosOut();
+  migrateOldData();
+  $('optAutoJson').checked=autoJsonEnabled();
+  restoreFsHandle();
+
+  /* 1) 优先读同目录 resume.json（http 打开时可用） */
+  if(await autoLoadJson()){await restorePhoto();renderResumeList();updateWriteBtn();return}
+
+  /* 1.5) resume.json 读不到（多半是 file:// 双击打开）就先恢复草稿，
+         比下面「上次导入的那份」新，也比空表单强 */
+  const draft=localStorage.getItem(DRAFT_KEY);
+  if(draft){
+    try{
+      applyResumeData(JSON.parse(draft));
+      await restorePhoto();
+      renderResumeList();updateWriteBtn();
+      flashHint('已恢复上次的编辑内容（还没写回 JSON 文件）');
+      return;
+    }catch(e){localStorage.removeItem(DRAFT_KEY)}
+  }
+
+  const idx=getResumeIndex();
+  if(idx.length>0){
+    /* 2) 读上次保存在浏览器里的简历 */
+    currentResumeId=idx[0].id;
+    const raw=localStorage.getItem(RESUME_PREFIX+currentResumeId);
+    if(raw)applyResumeData(JSON.parse(raw));
+    else{rebuildOrderChips();render()}
+  }else{
+    /* 3) 兜底：用上次「导入 JSON」留下的那份 */
+    const last=localStorage.getItem(LAST_IMPORT_KEY);
+    let ok=false;
+    if(last){try{applyResumeData(JSON.parse(last));ok=true}catch(e){}}
+    if(!ok){rebuildOrderChips();render()}
+  }
+  await restorePhoto();
+  renderResumeList();
+  updateWriteBtn();
+  if(!autoJsonEnabled())return;
+  flashHint('没读到同目录的 JSON —— 点「导入 JSON 简历」载入本地那份，再点「保存到浏览器」，之后刷新就不用重导了');
+})();
 </script>
 </body>
 </html>
