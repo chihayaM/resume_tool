@@ -429,6 +429,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
             <svg class="i"><use href="#i-clock"/></svg>启动时自动读取 JSON
             <input type="checkbox" id="optAutoJson" onchange="setAutoJson(this.checked)">
           </label>
+          <hr>
+          <button class="danger" onclick="menuAct(clearBrowserData)" title="清掉草稿、保存的简历、头像、写入目标的绑定和开关，回到第一次打开这个页面的状态（磁盘上的 JSON 文件不动）"><svg class="i"><use href="#i-alert"/></svg>清除浏览器数据</button>
         </div>
       </div>
     </div>
@@ -1506,18 +1508,34 @@ function idbOpen(){
     r.onerror=()=>rej(r.error);
   });
 }
+/* 用完就 close：不关的话连接会一直挂着，后面 deleteDatabase() 会被 blocked 住，
+   「清除浏览器数据」就删不干净 */
 async function idbGet(k){
   const db=await idbOpen();
   return new Promise((res,rej)=>{
     const q=db.transaction(FS_STORE,'readonly').objectStore(FS_STORE).get(k);
-    q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);
+    q.onsuccess=()=>{res(q.result);db.close()};q.onerror=()=>{rej(q.error);db.close()};
   });
 }
 async function idbSet(k,v){
   const db=await idbOpen();
   return new Promise((res,rej)=>{
     const q=db.transaction(FS_STORE,'readwrite').objectStore(FS_STORE).put(v,k);
-    q.onsuccess=()=>res();q.onerror=()=>rej(q.error);
+    q.onsuccess=()=>{res();db.close()};q.onerror=()=>{rej(q.error);db.close()};
+  });
+}
+/* 整库删掉（头像和文件句柄都在里面）。
+   刚用完的连接可能还没释放完，第一次会被 blocked —— 那不是失败，删不掉才怪，
+   隔一拍再删一次；真删不动也不耽误事，浏览器会在连接断开后自己完成。 */
+function idbDeleteAll(tried){
+  return new Promise(res=>{
+    const r=indexedDB.deleteDatabase(FS_DB);
+    r.onsuccess=()=>res(true);
+    r.onerror=()=>res(false);
+    r.onblocked=()=>res(false);
+  }).then(ok=>{
+    if(ok||tried)return ok;
+    return new Promise(r=>setTimeout(r,500)).then(()=>idbDeleteAll(1));
   });
 }
 
@@ -1615,6 +1633,29 @@ async function writeResumeJson(){
     if(e&&e.name==='AbortError'){toast('已取消');return}
     toast('⚠️ 写入失败：'+((e&&e.message)||e));
   }
+}
+
+/* ===== 清除浏览器数据 =====
+   localStorage 的键全带 resume_pro 前缀（草稿、简历列表、上次导入、自动读取开关），
+   IndexedDB 只有一个 resume_pro_fs（头像 + 写入目标的句柄）。清掉这两样就回到
+   第一次打开这个页面的状态 —— 磁盘上的 JSON 文件不动，刷新还能再读回来。 */
+const LS_PREFIX='resume_pro';
+function clearBrowserData(){
+  if(!confirm('清除浏览器里保存的全部数据？\n\n· 正在编辑的草稿\n· 保存到浏览器的简历\n· 头像\n· 写入目标的文件绑定\n· 自动读取开关\n\n磁盘上的 JSON 文件不受影响。清完相当于第一次打开这个页面，且不可撤销。'))return;
+  /* 1) localStorage 里带 resume_pro 前缀的全是自家的键，按前缀一起清 */
+  Object.keys(localStorage).filter(k=>k.indexOf(LS_PREFIX)===0).forEach(k=>localStorage.removeItem(k));
+  /* 2) 先把内存状态和界面复位，别让界面还显示着刚删掉的东西。
+        这一步必须同步做完 —— 存储层（IndexedDB）放最后异步处理，
+        它慢或者被 blocked 都不该拖住用户看得见的部分。 */
+  fsHandle=null;diskSnapshot='';photoDataUrl='';dirty=false;currentResumeId=null;
+  clearTimeout(renderTimer);
+  $('photoInput').value='';
+  clearForm();
+  $('optAutoJson').checked=true;   /* 键被删掉后 autoJsonEnabled() 默认返回开，勾选状态要对齐 */
+  render();renderResumeList();updateWriteBtn();
+  toast('✅ 已清除浏览器数据');
+  /* 3) IndexedDB 整库删掉（头像 + 写入目标句柄）。结果不用等，刷新之后一定是干净的 */
+  idbDeleteAll().then(()=>flashHint('浏览器数据已清除 —— 刷新页面会重新读取同目录的 JSON 文件'));
 }
 
 /* 表单里改了东西却没写回文件时，刷新/关闭前拦一下 */
