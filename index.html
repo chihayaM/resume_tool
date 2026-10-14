@@ -62,11 +62,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
    现在只留最常用的四个在外面：输出三件套 + 写入文件；其余收进「更多」折叠菜单。 */
 /* position/z-index 不能省：工具栏在 DOM 里排在 .resume-paper 前面，
    而纸面是 position:relative，不抬层的话展开的菜单会被纸面盖住。 */
-.toolbar{position:relative;z-index:30;display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:100%;max-width:1040px;margin-bottom:12px;padding:8px 10px;background:rgba(255,255,255,.78);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-1)}
+.toolbar{position:relative;z-index:30;display:flex;flex-direction:column;gap:8px;width:100%;max-width:1040px;margin-bottom:12px;padding:9px 10px;background:rgba(255,255,255,.78);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-1)}
+.tb-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}
 .tb-group{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
-/* 状态文字（「已从 xxx 载入」之类）放在工具栏中间的空档里，不再单独占一行。
-   flex-basis 用 0，免得它把右边的按钮挤到下一行去。 */
-.toolbar .hint{flex:1 1 0;min-width:0;margin:0 0 0 6px;padding:0;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:0}
+.tb-spacer{flex:1 1 auto;min-width:8px}
+/* 状态文字单独占一行放在按钮上面（原来夹在两组按钮中间，长一点就被挤成省略号，
+   还容易被当成按钮的说明）。空着的时候整行消失，工具栏不会空一条。 */
+.toolbar .hint{margin:0;padding:0 3px 9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:0}
+.toolbar .hint:empty{display:none}
 .btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 13px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--text-2);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .16s;box-shadow:var(--shadow-1);white-space:nowrap}
 .btn:hover{border-color:var(--line-2);background:#fbfcfe;color:var(--text);transform:translateY(-1px);box-shadow:var(--shadow-2)}
 .btn:active{transform:translateY(0);box-shadow:var(--shadow-1)}
@@ -404,12 +407,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   </div>
   <div class="preview-area">
     <div class="toolbar">
+      <p id="jsonHint" class="hint"></p>
+      <div class="tb-row">
       <div class="tb-group">
         <button class="btn btn-primary" onclick="exportPDF()"><svg class="i"><use href="#i-download"/></svg>导出 PDF</button>
         <button class="btn" onclick="exportJPG()"><svg class="i"><use href="#i-image"/></svg>导出 JPG</button>
         <button class="btn" onclick="window.print()"><svg class="i"><use href="#i-printer"/></svg>打印</button>
       </div>
-      <p id="jsonHint" class="hint"></p>
+      <span class="tb-spacer"></span>
       <div class="tb-group tb-more" id="tbMore">
         <button class="btn" onclick="saveCurrentResume()" title="在浏览器本地存一份，之后可以从左侧「简历管理」切回来"><svg class="i"><use href="#i-hdd"/></svg>保存到浏览器</button>
         <button class="btn" onclick="pickJsonFile()" title="从磁盘上挑一个 .json 简历文件载入当前页面"><svg class="i"><use href="#i-upload"/></svg>导入 JSON 简历</button>
@@ -432,6 +437,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
           <hr>
           <button class="danger" onclick="menuAct(clearBrowserData)" title="清掉草稿、保存的简历、头像、写入目标的绑定和开关，回到第一次打开这个页面的状态（磁盘上的 JSON 文件不动）"><svg class="i"><use href="#i-alert"/></svg>清除浏览器数据</button>
         </div>
+      </div>
       </div>
     </div>
     <input type="file" id="jsonInput" accept=".json,application/json" style="display:none" onchange="handleJsonInput(this)">
