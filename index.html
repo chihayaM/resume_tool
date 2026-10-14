@@ -430,7 +430,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
           <button onclick="menuAct(loadSample)" title="载入一份假数据用来看排版，会覆盖当前内容"><svg class="i"><use href="#i-refresh"/></svg>加载示例数据<span class="mi-note">会覆盖</span></button>
           <button class="danger" onclick="menuAct(clearAll)" title="清空表单内容（浏览器里存的那几份不受影响）"><svg class="i"><use href="#i-trash"/></svg>清空当前表单</button>
           <hr>
-          <label class="mi" title="页面通过 http 打开时，一进来就自动读取同目录的 JSON 文件">
+          <label class="mi" title="一进来就自动读「写入目标」那个文件（句柄直读，不挑打开方式）；没有写入目标时退回读同目录的 JSON 文件">
             <svg class="i"><use href="#i-clock"/></svg>启动时自动读取 JSON
             <input type="checkbox" id="optAutoJson" onchange="setAutoJson(this.checked)">
           </label>
@@ -1431,7 +1431,7 @@ const AUTO_JSON_KEY='resume_pro_autojson';
 function autoJsonEnabled(){const v=localStorage.getItem(AUTO_JSON_KEY);return v===null?true:v==='1'}
 function setAutoJson(on){
   localStorage.setItem(AUTO_JSON_KEY,on?'1':'0');
-  toast(on?'✅ 启动时会自动读 resume.json':'已关闭自动读取');
+  toast(on?'✅ 启动时会自动读取：优先读「写入目标」，其次读同目录 JSON':'已关闭自动读取');
 }
 
 /* 把一份简历数据铺到表单上（解除绑定，避免点「保存」时覆盖已存简历） */
@@ -1547,10 +1547,30 @@ function idbDeleteAll(tried){
 
 function fsWritable(){return typeof window.showSaveFilePicker==='function'}
 
-/* 启动时取回句柄，不阻塞初始化 */
+/* 取回上次记住的写入目标句柄。返回 promise，因为初始化时得等它回来 ——
+   启动自动读取要优先读这个文件（见 autoLoadFromHandle） */
 function restoreFsHandle(){
-  if(!fsWritable())return;
-  idbGet(FS_KEY).then(h=>{if(h){fsHandle=h;updateWriteBtn()}}).catch(()=>{});
+  if(!fsWritable())return Promise.resolve(null);
+  return idbGet(FS_KEY).then(h=>{
+    if(h){fsHandle=h;updateWriteBtn()}
+    return h||null;
+  }).catch(()=>null);
+}
+
+/* 读「写入目标」那个文件。
+   走的是文件句柄直接读，不经过 fetch —— 所以在 Pages 上也能用（那边根本没有
+   resume.json）。但申请权限必须由用户手势触发，页面刚打开时没有手势，
+   所以权限过期的话只能先跳过，提示用户点一次菜单里的「设置写入的 JSON 文件…」。 */
+async function autoLoadFromHandle(){
+  if(!fsHandle)return false;
+  try{
+    const p=await fsHandle.queryPermission({mode:'readwrite'});
+    if(p!=='granted'){needRegrant=true;return false}
+    const txt=await (await fsHandle.getFile()).text();
+    diskSnapshot=txt;
+    importJsonData(JSON.parse(txt),fsHandle.name);
+    return true;
+  }catch(e){return false}
 }
 
 function updateWriteBtn(){
@@ -1676,6 +1696,8 @@ window.addEventListener('beforeunload',e=>{
    能挡住最常见的一种翻车：页面还停在旧内容上，中间文件被别的地方改过了，
    这时候点写入就是把新版盖掉。 */
 let diskSnapshot='';
+/* 写入目标存在、但权限被浏览器收回时置位：启动时没法申请（要用户手势），只能提示一句 */
+let needRegrant=false;
 
 async function autoLoadJson(){
   if(!autoJsonEnabled())return false;
@@ -1719,9 +1741,16 @@ function exportJson(){
   await migratePhotosOut();
   migrateOldData();
   $('optAutoJson').checked=autoJsonEnabled();
-  restoreFsHandle();
+  /* 这里必须等一句：下面要按「写入目标」那个句柄去读文件。
+     但别死等 —— IndexedDB 万一不响应，用 800ms 兜住照常往下走 */
+  await Promise.race([restoreFsHandle(),new Promise(r=>setTimeout(r,800))]);
 
-  /* 1) 优先读同目录 resume.json（http 打开时可用） */
+  /* 1) 优先读「写入目标」那个文件 —— 句柄直读，Pages 上也能用。
+        原来这里只有下面那条 fetch，等于把用户设好的写入目标晾在一边：
+        在没有 resume.json 的地方（比如 Pages）那个勾就白勾了。 */
+  if(autoJsonEnabled()&&await autoLoadFromHandle()){await restorePhoto();renderResumeList();updateWriteBtn();return}
+
+  /* 2) 没有写入目标（或没权限）就退回读同目录 resume.json（http 打开时可用） */
   if(await autoLoadJson()){await restorePhoto();renderResumeList();updateWriteBtn();return}
 
   /* 1.5) resume.json 读不到（多半是 file:// 双击打开）就先恢复草稿，
@@ -1754,6 +1783,10 @@ function exportJson(){
   await restorePhoto();
   renderResumeList();
   updateWriteBtn();
+  if(needRegrant){
+    flashHint('写入目标存在但没读取权限 —— 点「更多 → 设置写入的 JSON 文件…」重新选一次这个文件就能自动读了');
+    return;
+  }
   if(!autoJsonEnabled())return;
   flashHint('没读到同目录的 JSON —— 点「导入 JSON」载入本地那份，再点「存到浏览器」，之后刷新就不用重导了');
 })();
